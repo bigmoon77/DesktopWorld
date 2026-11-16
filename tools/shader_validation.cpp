@@ -14,9 +14,16 @@ namespace
         const char* target;
     };
 
-    constexpr std::array<shader_entry, 8> shader_entries =
+    constexpr std::array<shader_entry, 15> shader_entries =
     {{
         { "CS_Transmittance", "cs_5_0" },
+        { "CS_DirectIrradiance", "cs_5_0" },
+        { "CS_SingleScattering", "cs_5_0" },
+        { "CS_ScatteringDensity", "cs_5_0" },
+        { "CS_MultipleScattering", "cs_5_0" },
+        { "CS_IndirectIrradiance", "cs_5_0" },
+        { "CS_AccumulateScattering", "cs_5_0" },
+        { "CS_AccumulateIrradiance", "cs_5_0" },
         { "CS_SkyView", "cs_5_0" },
         { "CS_Blend", "cs_5_0" },
         { "VS_Fullscreen", "vs_5_0" },
