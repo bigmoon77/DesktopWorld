@@ -1572,6 +1572,8 @@ namespace desktopworld
             if (quality_measure_requested)
             {
                 quality_measure_requested = false;
+                blend_quality_metrics = {};
+                direct_quality_metrics = {};
                 sky_quality_metrics blend_result{};
                 sky_quality_metrics direct_result{};
 
