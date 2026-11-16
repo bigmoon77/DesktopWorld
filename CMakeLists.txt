@@ -136,4 +136,81 @@ add_custom_target(validate_shaders ALL
     VERBATIM
 )
 
+option(
+    DESKTOPWORLD_BUILD_BRUNETON_COMPARATOR
+    "Build the optional CPU reference comparison tool"
+    OFF
+)
+
+if(DESKTOPWORLD_BUILD_BRUNETON_COMPARATOR)
+    find_package(Threads REQUIRED)
+
+    FetchContent_Declare(
+        bruneton_reference_source
+        GIT_REPOSITORY https://github.com/ebruneton/precomputed_atmospheric_scattering.git
+        GIT_TAG 34f14e745cff948f4ca3157d1b62a445ffa7286f
+        GIT_SUBMODULES ""
+        GIT_SHALLOW FALSE
+    )
+    FetchContent_Declare(
+        bruneton_dimensional_types
+        GIT_REPOSITORY https://github.com/ebruneton/dimensional_types.git
+        GIT_TAG 84e1e53320cd89119d31ec87cfdc2b51825b0c4b
+        GIT_SUBMODULES ""
+        GIT_SHALLOW FALSE
+    )
+    FetchContent_Declare(
+        bruneton_progress_bar
+        GIT_REPOSITORY https://github.com/ebruneton/progress_bar.git
+        GIT_TAG b34cdce09e505e36df90bd7e3b621949f5a52c24
+        GIT_SUBMODULES ""
+        GIT_SHALLOW FALSE
+    )
+
+    FetchContent_GetProperties(bruneton_reference_source)
+    if(NOT bruneton_reference_source_POPULATED)
+        FetchContent_Populate(bruneton_reference_source)
+    endif()
+
+    FetchContent_GetProperties(bruneton_dimensional_types)
+    if(NOT bruneton_dimensional_types_POPULATED)
+        FetchContent_Populate(bruneton_dimensional_types)
+    endif()
+
+    FetchContent_GetProperties(bruneton_progress_bar)
+    if(NOT bruneton_progress_bar_POPULATED)
+        FetchContent_Populate(bruneton_progress_bar)
+    endif()
+
+    add_library(bruneton_reference_cpu STATIC
+        ${bruneton_reference_source_SOURCE_DIR}/atmosphere/reference/functions.cc
+        ${bruneton_reference_source_SOURCE_DIR}/atmosphere/reference/model.cc
+        ${bruneton_progress_bar_SOURCE_DIR}/util/progress_bar.cc
+    )
+    target_include_directories(bruneton_reference_cpu PRIVATE
+        ${bruneton_reference_source_SOURCE_DIR}
+        ${bruneton_dimensional_types_SOURCE_DIR}
+        ${bruneton_progress_bar_SOURCE_DIR}
+    )
+    target_link_libraries(bruneton_reference_cpu PRIVATE Threads::Threads)
+
+    add_executable(bruneton_reference_compare EXCLUDE_FROM_ALL
+        tools/bruneton_reference_compare.cpp
+    )
+    target_include_directories(bruneton_reference_compare PRIVATE
+        ${bruneton_reference_source_SOURCE_DIR}
+        ${bruneton_dimensional_types_SOURCE_DIR}
+    )
+    target_link_libraries(bruneton_reference_compare PRIVATE
+        bruneton_reference_cpu
+    )
+    target_compile_options(bruneton_reference_compare PRIVATE
+        /W4
+        /permissive-
+        /EHsc
+        /utf-8
+        /Zc:__cplusplus
+    )
+endif()
+
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT desktopworld)
