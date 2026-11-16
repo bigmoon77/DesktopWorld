@@ -222,7 +222,7 @@ namespace desktopworld
                 }
 
 #ifdef DW_ENABLE_DEBUG_UI
-                if (window == app->desktop_window && message == WM_HOTKEY &&
+                if (window == app->host_monitor_window && message == WM_HOTKEY &&
                     wparam == 1)
                 {
                     app->debug_window_visible = !app->debug_window_visible;
@@ -233,10 +233,34 @@ namespace desktopworld
                 }
 #endif
 
+                if (window == app->host_monitor_window &&
+                    message == WM_TIMER &&
+                    wparam == host_check_timer_id)
+                {
+                    const HWND current_worker =
+                        app->desktop_host.find_desktop_parent();
+
+                    if (app->desktop_window == nullptr ||
+                        !IsWindow(app->desktop_window) ||
+                        !IsWindow(app->worker_window) ||
+                        (current_worker != nullptr &&
+                         current_worker != app->worker_window))
+                    {
+                        app->host_rebuild_requested = true;
+                    }
+                    return 0;
+                }
+
+                if (app->taskbar_created_message != 0 &&
+                    message == app->taskbar_created_message)
+                {
+                    app->host_rebuild_requested = true;
+                    return 0;
+                }
+
                 if (message == WM_DISPLAYCHANGE)
                 {
-                    app->refresh_desktop_bounds();
-                    app->frames.request_frame();
+                    app->host_rebuild_requested = true;
                     return 0;
                 }
 
@@ -249,8 +273,14 @@ namespace desktopworld
 
                 if (window == app->desktop_window && message == WM_DESTROY)
                 {
-                    app->running = false;
-                    PostQuitMessage(0);
+                    app->desktop_window = nullptr;
+                    if (!app->host_rebuilding && !app->shutting_down)
+                    {
+                        app->desktop_render_target.Reset();
+                        app->desktop_swap_chain.Reset();
+                        app->worker_window = nullptr;
+                        app->host_rebuild_requested = true;
+                    }
                     return 0;
                 }
             }
@@ -343,7 +373,7 @@ namespace desktopworld
             return true;
         }
 
-        bool create_windows(const int show_command)
+        bool create_desktop_window()
         {
             worker_window = desktop_host.find_desktop_parent();
             if (worker_window == nullptr)
@@ -352,14 +382,6 @@ namespace desktopworld
             }
 
             refresh_desktop_bounds();
-            GetSystemTime(&fixed_time);
-#ifdef DW_ENABLE_DEBUG_UI
-            utc_year = fixed_time.wYear;
-            utc_month = fixed_time.wMonth;
-            utc_day = fixed_time.wDay;
-            utc_hour = fixed_time.wHour;
-            utc_minute = fixed_time.wMinute;
-#endif
 
             desktop_window = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
@@ -386,12 +408,65 @@ namespace desktopworld
                 255,
                 LWA_ALPHA))
             {
+                DestroyWindow(desktop_window);
+                desktop_window = nullptr;
+                return false;
+            }
+
+            return true;
+        }
+
+        bool create_windows(const int show_command)
+        {
+            refresh_desktop_bounds();
+            GetSystemTime(&fixed_time);
+#ifdef DW_ENABLE_DEBUG_UI
+            utc_year = fixed_time.wYear;
+            utc_month = fixed_time.wMonth;
+            utc_day = fixed_time.wDay;
+            utc_hour = fixed_time.wHour;
+            utc_minute = fixed_time.wMinute;
+#endif
+
+            if (!create_desktop_window())
+            {
+                return false;
+            }
+
+            host_monitor_window = CreateWindowExW(
+                WS_EX_TOOLWINDOW,
+                desktop_class_name,
+                L"DesktopWorld Host Monitor",
+                WS_POPUP,
+                0,
+                0,
+                0,
+                0,
+                nullptr,
+                nullptr,
+                instance,
+                this);
+
+            if (host_monitor_window == nullptr)
+            {
+                return false;
+            }
+
+            taskbar_created_message =
+                RegisterWindowMessageW(L"TaskbarCreated");
+
+            if (SetTimer(
+                host_monitor_window,
+                host_check_timer_id,
+                3000,
+                nullptr) == 0)
+            {
                 return false;
             }
 
 #ifdef DW_ENABLE_DEBUG_UI
             RegisterHotKey(
-                desktop_window,
+                host_monitor_window,
                 1,
                 MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT,
                 'D');
@@ -439,6 +514,95 @@ namespace desktopworld
                     static_cast<int>(desktop_height),
                     SWP_NOZORDER | SWP_NOACTIVATE);
             }
+        }
+
+        bool create_desktop_swap_chain()
+        {
+            if (desktop_window == nullptr || device == nullptr || dxgi_factory == nullptr)
+            {
+                return false;
+            }
+
+            DXGI_SWAP_CHAIN_DESC description{};
+            description.BufferDesc.Width = desktop_width;
+            description.BufferDesc.Height = desktop_height;
+            description.BufferDesc.RefreshRate.Numerator = 60;
+            description.BufferDesc.RefreshRate.Denominator = 1;
+            description.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            description.SampleDesc.Count = 1;
+            description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+            description.BufferCount = 2;
+            description.OutputWindow = desktop_window;
+            description.Windowed = TRUE;
+            description.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+            if (FAILED(dxgi_factory->CreateSwapChain(
+                device.Get(),
+                &description,
+                desktop_swap_chain.GetAddressOf())))
+            {
+                return false;
+            }
+
+            dxgi_factory->MakeWindowAssociation(
+                desktop_window,
+                DXGI_MWA_NO_ALT_ENTER);
+
+            return SUCCEEDED(create_render_target_view(
+                device.Get(),
+                desktop_swap_chain.Get(),
+                desktop_render_target.GetAddressOf()));
+        }
+
+        void rebuild_desktop_host()
+        {
+            if (shutting_down || host_rebuilding)
+            {
+                return;
+            }
+
+            host_rebuild_requested = false;
+            host_rebuilding = true;
+
+            desktop_render_target.Reset();
+            desktop_swap_chain.Reset();
+
+            if (desktop_window != nullptr && IsWindow(desktop_window))
+            {
+                DestroyWindow(desktop_window);
+                desktop_window = nullptr;
+            }
+
+            worker_window = nullptr;
+            const bool window_created = create_desktop_window();
+            const bool swap_chain_created =
+                window_created && create_desktop_swap_chain();
+
+            if (!swap_chain_created)
+            {
+                desktop_render_target.Reset();
+                desktop_swap_chain.Reset();
+
+                if (desktop_window != nullptr && IsWindow(desktop_window))
+                {
+                    DestroyWindow(desktop_window);
+                }
+                desktop_window = nullptr;
+                worker_window = nullptr;
+
+                OutputDebugStringW(
+                    L"DesktopWorld: WorkerW host restore failed; will retry.\n");
+            }
+            else
+            {
+                render.resize(desktop_width, desktop_height);
+                environment_dirty = true;
+                frames.request_frame();
+                OutputDebugStringW(
+                    L"DesktopWorld: WorkerW host restored.\n");
+            }
+
+            host_rebuilding = false;
         }
 
         bool create_device_and_swap_chains()
@@ -514,42 +678,21 @@ namespace desktopworld
                 return false;
             }
 
+            if (!create_desktop_swap_chain())
+            {
+                return false;
+            }
+
+#ifdef DW_ENABLE_DEBUG_UI
             DXGI_SWAP_CHAIN_DESC description{};
-            description.BufferDesc.Width = desktop_width;
-            description.BufferDesc.Height = desktop_height;
             description.BufferDesc.RefreshRate.Numerator = 60;
             description.BufferDesc.RefreshRate.Denominator = 1;
             description.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
             description.SampleDesc.Count = 1;
             description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
             description.BufferCount = 2;
-            description.OutputWindow = desktop_window;
             description.Windowed = TRUE;
             description.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-            result = dxgi_factory->CreateSwapChain(
-                device.Get(),
-                &description,
-                desktop_swap_chain.GetAddressOf());
-
-            if (FAILED(result))
-            {
-                return false;
-            }
-
-            dxgi_factory->MakeWindowAssociation(
-                desktop_window,
-                DXGI_MWA_NO_ALT_ENTER);
-
-            if (FAILED(create_render_target_view(
-                device.Get(),
-                desktop_swap_chain.Get(),
-                desktop_render_target.GetAddressOf())))
-            {
-                return false;
-            }
-
-#ifdef DW_ENABLE_DEBUG_UI
             RECT debug_rect{};
             GetClientRect(debug_window, &debug_rect);
             description.BufferDesc.Width =
@@ -1287,6 +1430,11 @@ namespace desktopworld
                 const std::chrono::steady_clock::time_point now =
                     std::chrono::steady_clock::now();
 
+                if (host_rebuild_requested)
+                {
+                    rebuild_desktop_host();
+                }
+
                 if (frames.should_render(now))
                 {
                     const std::chrono::steady_clock::time_point frame_start =
@@ -1326,6 +1474,13 @@ namespace desktopworld
 
         void shutdown()
         {
+            shutting_down = true;
+
+            if (host_monitor_window != nullptr && IsWindow(host_monitor_window))
+            {
+                KillTimer(host_monitor_window, host_check_timer_id);
+            }
+
 #ifdef DW_ENABLE_DEBUG_UI
             if (ImGui::GetCurrentContext() != nullptr)
             {
@@ -1335,9 +1490,9 @@ namespace desktopworld
             }
 #endif
 #ifdef DW_ENABLE_DEBUG_UI
-            if (desktop_window != nullptr && IsWindow(desktop_window))
+            if (host_monitor_window != nullptr && IsWindow(host_monitor_window))
             {
-                UnregisterHotKey(desktop_window, 1);
+                UnregisterHotKey(host_monitor_window, 1);
             }
 #endif
             save_settings();
@@ -1359,6 +1514,11 @@ namespace desktopworld
             {
                 DestroyWindow(debug_window);
                 debug_window = nullptr;
+            }
+            if (host_monitor_window != nullptr && IsWindow(host_monitor_window))
+            {
+                DestroyWindow(host_monitor_window);
+                host_monitor_window = nullptr;
             }
         }
     };
