@@ -1145,8 +1145,6 @@ namespace desktopworld
                     break;
                 }
 
-                update_solar_state();
-
 #ifdef DW_ENABLE_DEBUG_UI
                 const std::chrono::steady_clock::time_point debug_now =
                     std::chrono::steady_clock::now();
@@ -1159,6 +1157,7 @@ namespace desktopworld
                 }
 #endif
 
+                update_solar_state();
                 update_environment();
 
                 const std::chrono::steady_clock::time_point now =
