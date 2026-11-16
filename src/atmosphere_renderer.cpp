@@ -1380,10 +1380,10 @@ namespace desktopworld
 
         metadata_file << std::setprecision(
             std::numeric_limits<float>::max_digits10);
-        metadata_file << "FormatVersion=1\\n";
+        metadata_file << "FormatVersion=1\n";
         metadata_file << "Width=" << width << "\n";
         metadata_file << "Height=" << height << "\n";
-        metadata_file << "ViewMapping=sky_view_direction_v1\\n";
+        metadata_file << "ViewMapping=sky_view_direction_v1\n";
         metadata_file << "RenderMethod=" << static_cast<unsigned int>(_render_method) << "\n";
         metadata_file << "BlendFactor=" << blend_factor << "\n";
         metadata_file << "SunDirectionX=" << current.direction.x << "\n";
