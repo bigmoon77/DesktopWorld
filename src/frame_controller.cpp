@@ -126,6 +126,9 @@ namespace desktopworld
         const auto milliseconds =
             std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count();
 
-        return static_cast<unsigned int>(std::clamp<std::int64_t>(milliseconds, 1, 100));
+        return static_cast<unsigned int>(std::clamp<std::int64_t>(
+            milliseconds,
+            1,
+            static_cast<std::int64_t>(0xFFFFFFFEu)));
     }
 }
