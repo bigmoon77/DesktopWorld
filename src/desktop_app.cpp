@@ -192,7 +192,6 @@ namespace desktopworld
         bool environment_dirty = true;
         bool fixed_time_enabled = false;
         bool debug_window_visible = true;
-        bool show_sky_samples = true;
 
         unsigned int desktop_width = 0;
         unsigned int desktop_height = 0;
@@ -216,7 +215,6 @@ namespace desktopworld
         frame_controller frames{};
         performance_stats stats{};
         std::chrono::steady_clock::time_point last_debug_frame{};
-        std::chrono::steady_clock::time_point last_cpu_frame{};
         std::chrono::steady_clock::time_point last_fps_measurement{};
         unsigned int fps_frame_count = 0;
 
@@ -240,7 +238,6 @@ namespace desktopworld
         int utc_minute = 0;
         float base_fps = 2.0f;
         float twilight_fps = 15.0f;
-        int sample_interval_choice = 60;
 #endif
 
         static LRESULT CALLBACK window_proc(
@@ -266,6 +263,7 @@ namespace desktopworld
 
 #ifdef DW_ENABLE_DEBUG_UI
             if (app != nullptr && window == app->debug_window &&
+                ImGui::GetCurrentContext() != nullptr &&
                 ImGui_ImplWin32_WndProcHandler(window, message, wparam, lparam))
             {
                 return 1;
@@ -347,6 +345,12 @@ namespace desktopworld
             }
 
             refresh_desktop_bounds();
+            GetSystemTime(&fixed_time);
+            utc_year = fixed_time.wYear;
+            utc_month = fixed_time.wMonth;
+            utc_day = fixed_time.wDay;
+            utc_hour = fixed_time.wHour;
+            utc_minute = fixed_time.wMinute;
 
             desktop_window = CreateWindowExW(
                 WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
@@ -542,7 +546,16 @@ namespace desktopworld
             }
 #endif
 
-            if (!atmosphere.initialize(device.Get(), context.Get(), DW_SHADER_DIR))
+            wchar_t executable_path[MAX_PATH]{};
+            if (GetModuleFileNameW(nullptr, executable_path, MAX_PATH) == 0)
+            {
+                return false;
+            }
+            const std::filesystem::path shader_directory =
+                std::filesystem::path(executable_path).parent_path() / L"shaders";
+
+            if (!atmosphere.initialize(
+                device.Get(), context.Get(), shader_directory.c_str()))
             {
                 return false;
             }
@@ -748,7 +761,20 @@ namespace desktopworld
 
                 if (ImGui::BeginTabItem("Solar"))
                 {
-                    ImGui::Checkbox("Use fixed UTC time", &fixed_time_enabled);
+                    if (ImGui::Checkbox("Use fixed UTC time", &fixed_time_enabled))
+                    {
+                        if (fixed_time_enabled)
+                        {
+                            GetSystemTime(&fixed_time);
+                            utc_year = fixed_time.wYear;
+                            utc_month = fixed_time.wMonth;
+                            utc_day = fixed_time.wDay;
+                            utc_hour = fixed_time.wHour;
+                            utc_minute = fixed_time.wMinute;
+                        }
+                        environment_dirty = true;
+                        frames.request_frame();
+                    }
                     if (fixed_time_enabled)
                     {
                         bool time_changed = false;
@@ -872,7 +898,6 @@ namespace desktopworld
                     if (ImGui::Button("Reset Parameters"))
                     {
                         pending_parameters = atmosphere_parameters{};
-                        pending_parameters_dirty = true;
                     }
 
                     ImGui::Separator();
@@ -1098,7 +1123,6 @@ namespace desktopworld
     {
         implementation app{};
         app.instance = instance;
-        _implementation = &app;
 
         if (!app.register_window_classes() ||
             !app.create_windows(show_command) ||
@@ -1115,7 +1139,6 @@ namespace desktopworld
         const int result = app.execute();
         app.shutdown();
 
-        _implementation = nullptr;
         return result;
     }
 }
