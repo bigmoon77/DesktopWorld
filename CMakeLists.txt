@@ -100,6 +100,8 @@ add_executable(desktopworld_core_tests
     src/frame_controller.cpp
     src/time_sample_scheduler.cpp
     src/environment_controller.cpp
+    src/render_system.cpp
+    src/settings_store.cpp
 )
 target_include_directories(desktopworld_core_tests PRIVATE include)
 target_compile_definitions(desktopworld_core_tests PRIVATE
