@@ -12,7 +12,6 @@ namespace desktopworld
     {
         double latitude = 35.6812;
         double longitude = 139.7671;
-        double altitude_meters = 0.0;
 
         render_method method = render_method::sky_blend_compute;
         frame_mode frame_update_mode = frame_mode::adaptive;
@@ -42,10 +41,6 @@ namespace desktopworld
             const wchar_t* section,
             const wchar_t* key,
             int fallback) const;
-        bool write_string(
-            const wchar_t* section,
-            const wchar_t* key,
-            const std::wstring& value) const;
         static std::wstring format_double(double value);
 
         mutable std::filesystem::path _path;
