@@ -1,10 +1,10 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象ブランチ: `feature/initial-implementation`
-- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.2
-- レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性
-- 結果: **単一仮想デスクトップ描画方式に統一。文書上のSwapChain構成矛盾を修正。設計レビューは条件付き合格。**
-- 未完了: 大気モデルの品質評価、画像誤差計測、実機での複数モニター / Explorer 復旧検証。
+- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.3
+- レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、およびHDR品質計測仕様とコードの照合
+- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測とPFMキャプチャを実装。**
+- 未完了: Bruneton参照実装との物理精度比較、GPUメモリ計測、実機での複数モニター / Explorer 復旧検証。
 - 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
 ## 1. レビュー対象と前提
@@ -82,7 +82,17 @@
 - WorkerW の取得・再構築に失敗した場合は描画面を無効化し、定期検査で再試行する。
 - D3D11 device / immediate context は単一構成である。
 
-### 4.2 CIで確認した範囲
+### 4.2 HDR品質計測の実装確認
+
+- B vs D は現在時刻の直接生成 Sky View と、Sample Pair の Compute 補間結果を 256 x 128 の同一テクセル座標で比較する。
+- A vs D は Linear HDR の RGBA16F RenderTarget を使い、直接評価と Sky View LUT の画面サンプル結果を同じ解析解像度で比較する。
+- 比較値は tone mapping / exposure 適用前で、MAE / RMSE / Maximum Absolute Error を RGB スカラー成分単位で算出する。
+- PFM キャプチャは Linear HDR Sky View LUT を RGB 32-bit float で保存する。
+- これらの GPU readback は同期的な Debug 操作であり、常時実行しない。
+
+この計測は同一の近似大気モデル内で描画経路の誤差を見るもの。Bruneton 参照実装に対する物理精度を検証した結果とは扱わない。
+
+### 4.3 CIで確認した範囲
 
 確認済みの Windows CI run では以下が成功している。
 
@@ -97,8 +107,8 @@
 | ID | 課題 | 現状 | 次の作業 |
 |---|---|---|---|
 | O-01 | Bruneton参照精度 | RGB近似・低解像度の複数散乱プロトタイプ | 参照実装と同条件の画像比較・数値誤差評価 |
-| O-02 | B vs D補間誤差 | MAE / RMSE / 最大誤差の自動測定が未実装 | Linear HDR画像のキャプチャと比較を実装 |
-| O-03 | A vs Dモデル/空間近似誤差 | 自動測定が未実装 | 比較条件を固定して測定 |
+| O-02 | B vs D補間誤差 | Debug UI からワンショットで Linear HDR の MAE / RMSE / 最大誤差を計測できる | 薄明・緯度・日付の異なる条件で実測結果を収集 |
+| O-03 | A vs D描画経路・空間近似誤差 | 同一 Linear HDR 条件、最大 1920 x 1080 の解析グリッドで計測できる | 複数の出力解像度・太陽高度で実測結果を収集 |
 | O-04 | GPUメモリ | GPU Timestamp はあるがメモリ計測なし | DXGI / D3D11 で取得可能な範囲を定義して実装 |
 | O-05 | 実機ホスト検証 | WorkerW再取得処理はあるが実機検証未完了 | Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
 | O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として定義済み。時間追従が必要な場合は Adaptive / Fixed を使う |
