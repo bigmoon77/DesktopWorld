@@ -2,7 +2,7 @@
 
 - 文書バージョン: 1.5
 - 対応要件: docs/requirements.md v1.2
-- 状態: 単一仮想デスクトップ描画方式およびHDR品質計測仕様の反映版
+- 状態: 単一仮想デスクトップ描画方式、HDR品質計測、Bruneton CPU比較仕様の反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -399,7 +399,7 @@ Debug UI では DXGI 1.4 の `IDXGIAdapter3::QueryVideoMemoryInfo` を使用し�
 ```powershell
 cmake -S . -B out/reference -A x64 -DDESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON
 cmake --build out/reference --config Release --target bruneton_reference_compare
-.\out\reference\Release\bruneton_reference_compare.exe <sky_capture.pfm>
+.\out\reference\Release\bruneton_reference_compare.exe "C:\path\sky_capture.pfm"
 ```
 
 #### 入力と比較条件
