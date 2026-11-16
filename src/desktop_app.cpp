@@ -191,6 +191,7 @@ namespace desktopworld
         bool running = true;
         bool environment_dirty = true;
         bool current_sky_generated = false;
+        int sample_interval_override_seconds = 0;
         bool fixed_time_enabled = false;
         bool debug_window_visible = true;
 
@@ -240,7 +241,6 @@ namespace desktopworld
         float base_fps = 2.0f;
         float fixed_fps = 2.0f;
         float twilight_fps = 15.0f;
-        int sample_interval_override_seconds = 0;
 #endif
 
         static LRESULT CALLBACK window_proc(
