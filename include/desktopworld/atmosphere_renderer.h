@@ -21,6 +21,8 @@ namespace desktopworld
         void shutdown();
 
         bool set_atmosphere_parameters(const atmosphere_parameters& parameters);
+        void set_exposure(float exposure);
+        void update_current_sky(const solar_state& current);
         void update_sky_samples(
             const solar_state& sample_a,
             const solar_state& sample_b,
