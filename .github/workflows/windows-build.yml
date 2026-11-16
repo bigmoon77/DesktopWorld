@@ -21,5 +21,11 @@ jobs:
       - name: Build Debug
         run: cmake --build out/build --config Debug --parallel
 
+      - name: Test Debug
+        run: ctest --test-dir out/build -C Debug --output-on-failure
+
       - name: Build Release
         run: cmake --build out/build --config Release --parallel
+
+      - name: Test Release
+        run: ctest --test-dir out/build -C Release --output-on-failure
