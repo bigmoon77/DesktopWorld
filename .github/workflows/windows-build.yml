@@ -29,3 +29,15 @@ jobs:
 
       - name: Test Release
         run: ctest --test-dir out/build -C Release --output-on-failure
+
+  bruneton_reference_tool:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure reference comparator
+        run: cmake -S . -B out/reference -A x64 -DDESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON
+
+      - name: Build reference comparator
+        run: cmake --build out/reference --config Release --target bruneton_reference_compare --parallel
