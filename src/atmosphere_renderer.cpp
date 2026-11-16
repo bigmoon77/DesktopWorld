@@ -33,6 +33,7 @@ namespace desktopworld
 
         _device = device;
         _context = context;
+        _profiler.initialize(device, context);
 
         if (!create_shaders(shader_path) ||
             !create_constant_buffers() ||
@@ -49,6 +50,7 @@ namespace desktopworld
 
     void atmosphere_renderer::shutdown()
     {
+        _profiler.shutdown();
         if (_context)
         {
             _context->ClearState();
@@ -110,7 +112,9 @@ namespace desktopworld
         constants.solar_intensity = parameters.solar_intensity;
 
         _context->UpdateSubresource(_atmosphere_cb.Get(), 0, nullptr, &constants, 0, 0);
+        _profiler.begin_scope(gpu_profile_scope::precompute);
         generate_transmittance();
+        _profiler.end_scope(gpu_profile_scope::precompute);
         return true;
     }
 
@@ -123,7 +127,9 @@ namespace desktopworld
     {
         if (_initialized && _render_method == render_method::sky_current)
         {
+            _profiler.begin_scope(gpu_profile_scope::sky_generation);
             generate_sky_view(_sky_current_uav.Get(), current);
+            _profiler.end_scope(gpu_profile_scope::sky_generation);
         }
     }
 
@@ -140,16 +146,29 @@ namespace desktopworld
             return;
         }
 
+        const bool requires_sky_generation =
+            _render_method == render_method::sky_current ||
+            _render_method == render_method::sky_blend_pixel ||
+            _render_method == render_method::sky_blend_compute;
+
+        if (!requires_sky_generation)
+        {
+            return;
+        }
+
+        _profiler.begin_scope(gpu_profile_scope::sky_generation);
+
         if (_render_method == render_method::sky_current)
         {
             generate_sky_view(_sky_current_uav.Get(), current);
         }
-        else if (_render_method == render_method::sky_blend_pixel ||
-                 _render_method == render_method::sky_blend_compute)
+        else
         {
             generate_sky_view(_sky_a_uav.Get(), sample_a);
             generate_sky_view(_sky_b_uav.Get(), sample_b);
         }
+
+        _profiler.end_scope(gpu_profile_scope::sky_generation);
     }
 
     void atmosphere_renderer::draw(
@@ -166,7 +185,9 @@ namespace desktopworld
 
         if (_render_method == render_method::sky_blend_compute)
         {
+            _profiler.begin_scope(gpu_profile_scope::blend);
             blend_sky_views(blend_factor);
+            _profiler.end_scope(gpu_profile_scope::blend);
         }
 
         update_constant_buffers(current_sun, blend_factor);
@@ -218,7 +239,9 @@ namespace desktopworld
         }
 
         _context->PSSetShader(pixel_shader, nullptr, 0);
+        _profiler.begin_scope(gpu_profile_scope::render);
         _context->Draw(3, 0);
+        _profiler.end_scope(gpu_profile_scope::render);
 
         ID3D11ShaderResourceView* null_resources[4]{};
         _context->PSSetShaderResources(0, 4, null_resources);
@@ -243,6 +266,21 @@ namespace desktopworld
     bool atmosphere_renderer::is_initialized() const
     {
         return _initialized;
+    }
+
+    void atmosphere_renderer::begin_profile_frame()
+    {
+        _profiler.begin_frame();
+    }
+
+    void atmosphere_renderer::end_profile_frame()
+    {
+        _profiler.end_frame();
+    }
+
+    bool atmosphere_renderer::get_profile_result(gpu_profile_result& result)
+    {
+        return _profiler.poll(result);
     }
 
     bool atmosphere_renderer::create_shaders(const wchar_t* shader_path)
