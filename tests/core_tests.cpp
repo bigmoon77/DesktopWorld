@@ -338,14 +338,21 @@ namespace
 
 int main()
 {
+    std::cout << "test_solar_position" << std::endl;
     test_solar_position();
+    std::cout << "test_sample_intervals" << std::endl;
     test_sample_intervals();
+    std::cout << "test_sample_windows" << std::endl;
     test_sample_windows();
+    std::cout << "test_environment_controller" << std::endl;
     test_environment_controller();
+    std::cout << "test_render_system" << std::endl;
     test_render_system();
+    std::cout << "test_settings_store" << std::endl;
     test_settings_store();
+    std::cout << "test_frame_controller" << std::endl;
     test_frame_controller();
 
-    std::cout << "DesktopWorld core tests passed.\n";
+    std::cout << "DesktopWorld core tests passed." << std::endl;
     return 0;
 }
