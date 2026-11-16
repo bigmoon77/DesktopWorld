@@ -33,7 +33,7 @@ target_include_directories(desktopworld_imgui PUBLIC
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
 )
-target_compile_definitions(desktopworld_imgui PUBLIC UNICODE _UNICODE)
+target_compile_definitions(desktopworld_imgui PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 add_executable(desktopworld WIN32
     src/main.cpp
@@ -47,6 +47,8 @@ target_include_directories(desktopworld PRIVATE include)
 target_compile_definitions(desktopworld PRIVATE
     UNICODE
     _UNICODE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
     $<$<CONFIG:Debug>:DW_ENABLE_DEBUG_UI>
 )
 
