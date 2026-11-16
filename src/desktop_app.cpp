@@ -8,6 +8,7 @@
 #include "desktopworld/time_sample_scheduler.h"
 #include "desktopworld/render_system.h"
 #include "desktopworld/atmosphere_sky_pass.h"
+#include "desktopworld/environment_controller.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -170,13 +171,11 @@ namespace desktopworld
         SYSTEMTIME fixed_time{};
         SYSTEMTIME current_time{};
 
-        std::int64_t sample_start_time = -1;
         std::int64_t sample_interval = 0;
         float blend_factor = 0.0f;
 
         solar_state current_sun{};
-        solar_state sample_sun_a{};
-        solar_state sample_sun_b{};
+        environment_controller environment{};
 
         atmosphere_parameters pending_parameters{};
 
@@ -307,6 +306,9 @@ namespace desktopworld
             longitude = settings.longitude;
             sample_interval_override_seconds =
                 settings.sample_interval_override_seconds;
+            environment.set_observer_location(latitude, longitude);
+            environment.set_sample_interval_override(
+                sample_interval_override_seconds);
             pending_parameters = settings.atmosphere;
 
             frames.set_adaptive_fps(settings.base_fps, settings.twilight_fps);
@@ -694,52 +696,36 @@ namespace desktopworld
         void update_solar_state()
         {
             current_time = get_current_utc();
-            current_sun = solar_model::calculate(
-                current_time,
-                latitude,
-                longitude);
-
-            frames.set_solar_elevation(current_sun.elevation_degrees);
         }
 
         void update_environment()
         {
-            const std::int64_t current_epoch =
-                system_time_to_unix_seconds(current_time);
-            const std::int64_t interval = calculate_sample_interval_seconds(
-                current_sun.elevation_degrees,
+            environment.set_observer_location(latitude, longitude);
+            environment.set_sample_interval_override(
                 sample_interval_override_seconds);
-            const time_sample_window sample_window =
-                calculate_time_sample_window(current_epoch, interval);
 
-            const bool sample_pair_changed =
-                sample_window.start_utc_seconds != sample_start_time ||
-                sample_window.interval_seconds != sample_interval;
+            const environment_frame environment_state =
+                environment.update(current_time);
 
-            if (sample_pair_changed || environment_dirty)
+            current_sun = environment_state.current_sun;
+            sample_interval =
+                environment_state.sample_window.interval_seconds;
+            blend_factor = environment_state.sample_window.blend_factor;
+
+            frames.set_solar_elevation(current_sun.elevation_degrees);
+
+            if (environment_state.sample_pair_changed || environment_dirty)
             {
-                sample_start_time = sample_window.start_utc_seconds;
-                sample_interval = sample_window.interval_seconds;
-
-                const SYSTEMTIME time_a =
-                    unix_seconds_to_system_time(sample_window.start_utc_seconds);
-                const SYSTEMTIME time_b =
-                    unix_seconds_to_system_time(sample_window.end_utc_seconds);
-
-                sample_sun_a = solar_model::calculate(time_a, latitude, longitude);
-                sample_sun_b = solar_model::calculate(time_b, latitude, longitude);
-
                 atmosphere.update_sky_samples(
-                    sample_sun_a,
-                    sample_sun_b,
+                    environment_state.sample_sun_a,
+                    environment_state.sample_sun_b,
                     current_sun,
-                    sample_window.blend_factor);
+                    blend_factor);
+
                 current_sky_generated =
                     atmosphere.get_render_method() == render_method::sky_current;
                 environment_dirty = false;
             }
-
-            blend_factor = sample_window.blend_factor;
         }
 
         void render_desktop()
@@ -984,6 +970,7 @@ namespace desktopworld
                     if (ImGui::InputDouble("Latitude", &latitude, 0.01, 0.1, "%.5f"))
                     {
                         latitude = std::clamp(latitude, -90.0, 90.0);
+                        environment.set_observer_location(latitude, longitude);
                         settings.latitude = latitude;
                         environment_dirty = true;
                         frames.request_frame();
@@ -991,6 +978,7 @@ namespace desktopworld
                     if (ImGui::InputDouble("Longitude", &longitude, 0.01, 0.1, "%.5f"))
                     {
                         longitude = std::clamp(longitude, -180.0, 180.0);
+                        environment.set_observer_location(latitude, longitude);
                         settings.longitude = longitude;
                         environment_dirty = true;
                         frames.request_frame();
@@ -1134,6 +1122,8 @@ namespace desktopworld
                     {
                         constexpr int interval_values[] = { 0, 3600, 1800, 900 };
                         sample_interval_override_seconds = interval_values[interval_index];
+                        environment.set_sample_interval_override(
+                            sample_interval_override_seconds);
                         settings.sample_interval_override_seconds =
                             sample_interval_override_seconds;
                         environment_dirty = true;
