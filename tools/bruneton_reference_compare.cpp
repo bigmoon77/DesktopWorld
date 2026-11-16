@@ -771,7 +771,29 @@ int main(int argc, char** argv)
     const AtmosphereParameters parameters =
         make_reference_parameters(metadata);
 
-    const std::uint64_t cache_hash = hash_text(metadata_text);
+    std::string atmosphere_cache_key;
+    {
+        std::istringstream metadata_lines(metadata_text);
+        std::string line;
+        while (std::getline(metadata_lines, line))
+        {
+            if (line.rfind("FormatVersion=", 0) == 0 ||
+                line.rfind("Width=", 0) == 0 ||
+                line.rfind("Height=", 0) == 0 ||
+                line.rfind("ViewMapping=", 0) == 0 ||
+                line.rfind("RenderMethod=", 0) == 0 ||
+                line.rfind("BlendFactor=", 0) == 0 ||
+                line.rfind("SunDirection", 0) == 0)
+            {
+                continue;
+            }
+
+            atmosphere_cache_key += line;
+            atmosphere_cache_key.push_back('\\n');
+        }
+    }
+
+    const std::uint64_t cache_hash = hash_text(atmosphere_cache_key);
     std::ostringstream cache_name;
     cache_name << "desktopworld_bruneton_" << std::hex << cache_hash;
 
