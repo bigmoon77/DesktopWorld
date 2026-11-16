@@ -1148,16 +1148,18 @@ namespace desktopworld
                 update_solar_state();
 
 #ifdef DW_ENABLE_DEBUG_UI
-                const std::chrono::steady_clock::time_point now =
+                const std::chrono::steady_clock::time_point debug_now =
                     std::chrono::steady_clock::now();
                 if (debug_window_visible &&
                     (last_debug_frame.time_since_epoch().count() == 0 ||
-                     now - last_debug_frame >= std::chrono::milliseconds(33)))
+                     debug_now - last_debug_frame >= std::chrono::milliseconds(33)))
                 {
                     draw_debug_gui();
-                    last_debug_frame = now;
+                    last_debug_frame = debug_now;
                 }
 #endif
+
+                update_environment();
 
                 const std::chrono::steady_clock::time_point now =
                     std::chrono::steady_clock::now();
