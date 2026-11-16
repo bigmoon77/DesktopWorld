@@ -1563,7 +1563,7 @@ namespace desktopworld
                 _single_rayleigh_srv.Get(),
                 _single_mie_srv.Get(),
                 _delta_multiple_srv.Get(),
-                _delta_irradiance_srv.Get()
+                _irradiance_sum_a_srv.Get()
             };
             _context->CSSetShaderResources(0, 5, density_inputs);
 
