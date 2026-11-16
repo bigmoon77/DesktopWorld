@@ -45,6 +45,7 @@ add_executable(desktopworld WIN32
     src/time_sample_scheduler.cpp
     src/environment_controller.cpp
     src/workerw_host.cpp
+    src/monitor_manager.cpp
     src/time_provider.cpp
     src/settings_store.cpp
     src/render_system.cpp
