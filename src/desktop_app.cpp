@@ -9,6 +9,7 @@
 #include "desktopworld/atmosphere_sky_pass.h"
 #include "desktopworld/environment_controller.h"
 #include "desktopworld/workerw_host.h"
+#include "desktopworld/time_provider.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -115,6 +116,7 @@ namespace desktopworld
         settings_store settings_storage{};
         app_settings settings{};
         render_system render{};
+        time_provider time_source{};
 
 #ifdef DW_ENABLE_DEBUG_UI
         bool pending_time_dirty = false;
@@ -648,9 +650,7 @@ namespace desktopworld
                 return fixed_time;
             }
 
-            SYSTEMTIME result{};
-            GetSystemTime(&result);
-            return result;
+            return time_source.current_utc();
         }
 
         void update_solar_state()
