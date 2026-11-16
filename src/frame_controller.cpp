@@ -99,9 +99,14 @@ namespace desktopworld
 
     unsigned int frame_controller::wait_timeout_ms(const clock::time_point now) const
     {
-        if (_mode == frame_mode::on_demand && !_pending_frame)
+        if (_mode == frame_mode::on_demand)
         {
-            return 0xFFFFFFFFu;
+            return _pending_frame ? 0U : 0xFFFFFFFFu;
+        }
+
+        if (_pending_frame)
+        {
+            return 0U;
         }
 
         const auto remaining = _next_frame - now;
