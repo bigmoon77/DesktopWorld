@@ -67,7 +67,15 @@ namespace desktopworld
             hash = update_hash(hash, &parameters.solar_intensity, sizeof(float));
             hash = update_hash(hash, &parameters.max_scattering_order, sizeof(std::uint32_t));
 
-            constexpr std::uint32_t algorithm_version = 2;
+            const std::uint32_t format =
+                static_cast<std::uint32_t>(lut_format);
+            hash = update_hash(hash, &format, sizeof(format));
+            hash = update_hash(hash, &irradiance_width, sizeof(irradiance_width));
+            hash = update_hash(hash, &irradiance_height, sizeof(irradiance_height));
+            hash = update_hash(hash, &scattering_height, sizeof(scattering_height));
+            hash = update_hash(hash, &scattering_depth, sizeof(scattering_depth));
+
+            constexpr std::uint32_t algorithm_version = 3;
             hash = update_hash(hash, &algorithm_version, sizeof(algorithm_version));
             hash = update_hash(hash, &transmittance_width, sizeof(transmittance_width));
             hash = update_hash(hash, &transmittance_height, sizeof(transmittance_height));
