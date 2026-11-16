@@ -477,7 +477,7 @@ namespace desktopworld
             }
             else
             {
-                exponent = exponent - 15U + 127U;
+                exponent += 112U;
                 bits |= (exponent << 23U) | (mantissa << 13U);
             }
 
