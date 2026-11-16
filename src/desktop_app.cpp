@@ -8,6 +8,7 @@
 #include "desktopworld/render_system.h"
 #include "desktopworld/atmosphere_sky_pass.h"
 #include "desktopworld/environment_controller.h"
+#include "desktopworld/workerw_host.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -76,56 +77,6 @@ namespace desktopworld
             return result;
         }
 
-        HWND find_workerw()
-        {
-            HWND program_manager = FindWindowW(L"Progman", nullptr);
-            if (program_manager != nullptr)
-            {
-                DWORD_PTR result = 0;
-                SendMessageTimeoutW(
-                    program_manager,
-                    0x052C,
-                    0,
-                    0,
-                    SMTO_NORMAL,
-                    1000,
-                    &result);
-            }
-
-            struct search_context
-            {
-                HWND worker = nullptr;
-            } context;
-
-            EnumWindows(
-                [](HWND window, LPARAM parameter) -> BOOL
-                {
-                    search_context* search =
-                        reinterpret_cast<search_context*>(parameter);
-
-                    HWND shell_view = FindWindowExW(
-                        window,
-                        nullptr,
-                        L"SHELLDLL_DefView",
-                        nullptr);
-
-                    if (shell_view != nullptr)
-                    {
-                        search->worker = FindWindowExW(
-                            nullptr,
-                            window,
-                            L"WorkerW",
-                            nullptr);
-                        return FALSE;
-                    }
-
-                    return TRUE;
-                },
-                reinterpret_cast<LPARAM>(&context));
-
-            return context.worker;
-        }
-
         HRESULT create_render_target_view(
             ID3D11Device* device,
             IDXGISwapChain* swap_chain,
@@ -154,6 +105,7 @@ namespace desktopworld
         HWND desktop_window = nullptr;
         HWND debug_window = nullptr;
         HWND worker_window = nullptr;
+        workerw_host desktop_host{};
         bool running = true;
         bool environment_dirty = true;
         bool current_sky_generated = false;
@@ -386,7 +338,7 @@ namespace desktopworld
 
         bool create_windows(const int show_command)
         {
-            worker_window = find_workerw();
+            worker_window = desktop_host.find_desktop_parent();
             if (worker_window == nullptr)
             {
                 return false;
