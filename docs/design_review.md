@@ -3,7 +3,7 @@
 - 対象ブランチ: `feature/initial-implementation`
 - 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.4
 - レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、およびHDR品質計測仕様とコードの照合
-- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測とPFMキャプチャを実装。**
+- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測、PFMキャプチャ、DXGIプロセスGPUメモリ監視を実装。**
 - 未完了: Bruneton参照実装との物理精度比較、実機での複数モニター / Explorer 復旧検証。
 - 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
@@ -99,7 +99,7 @@
 - 表示値は DesktopWorld 単体のリソース総量ではなく、対象プロセス全体の DXGI 使用量である。
 - ドライバー / segment が未対応の場合は unavailable と表示する。
 
-### 4.3 CIで確認した範囲
+### 4.4 CIで確認した範囲
 
 確認済みの Windows CI run では以下が成功している。
 
