@@ -20,18 +20,18 @@ if(NOT imgui_POPULATED)
     FetchContent_Populate(imgui)
 endif()
 
-set(IMGUI_DIR \${imgui_SOURCE_DIR})
+set(IMGUI_DIR ${imgui_SOURCE_DIR})
 add_library(desktopworld_imgui STATIC
-    \${IMGUI_DIR}/imgui.cpp
-    \${IMGUI_DIR}/imgui_draw.cpp
-    \${IMGUI_DIR}/imgui_tables.cpp
-    \${IMGUI_DIR}/imgui_widgets.cpp
-    \${IMGUI_DIR}/backends/imgui_impl_win32.cpp
-    \${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
 )
 target_include_directories(desktopworld_imgui PUBLIC
-    \${IMGUI_DIR}
-    \${IMGUI_DIR}/backends
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
 )
 target_compile_definitions(desktopworld_imgui PUBLIC UNICODE _UNICODE)
 
@@ -47,7 +47,6 @@ target_include_directories(desktopworld PRIVATE include)
 target_compile_definitions(desktopworld PRIVATE
     UNICODE
     _UNICODE
-    DW_SHADER_DIR=L"\${CMAKE_CURRENT_BINARY_DIR}/shaders"
     $<$<CONFIG:Debug>:DW_ENABLE_DEBUG_UI>
 )
 
@@ -71,9 +70,9 @@ target_link_libraries(desktopworld PRIVATE
 )
 
 add_custom_command(TARGET desktopworld POST_BUILD
-    COMMAND \${CMAKE_COMMAND} -E copy_directory
-        \${CMAKE_CURRENT_SOURCE_DIR}/shaders
-        \${CMAKE_CURRENT_BINARY_DIR}/shaders
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+        ${CMAKE_CURRENT_BINARY_DIR}/shaders
 )
 
-set_property(DIRECTORY \${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT desktopworld)
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT desktopworld)
