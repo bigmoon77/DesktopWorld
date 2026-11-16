@@ -44,7 +44,6 @@ namespace desktopworld
         }
 
         _initialized = true;
-        set_atmosphere_parameters(_parameters);
         return true;
     }
 
