@@ -68,6 +68,7 @@ namespace desktopworld
         _transmittance_texture.Reset();
 
         _linear_sampler.Reset();
+        _linear_sampler.Reset();
         _frame_cb.Reset();
         _atmosphere_cb.Reset();
 
@@ -111,6 +112,19 @@ namespace desktopworld
         return true;
     }
 
+    void atmosphere_renderer::set_exposure(const float exposure)
+    {
+        _parameters.exposure = clamp_float(exposure, 0.01f, 16.0f);
+    }
+
+    void atmosphere_renderer::update_current_sky(const solar_state& current)
+    {
+        if (_initialized && _render_method == render_method::sky_current)
+        {
+            generate_sky_view(_sky_current_uav.Get(), current);
+        }
+    }
+
     void atmosphere_renderer::update_sky_samples(
         const solar_state& sample_a,
         const solar_state& sample_b,
@@ -122,16 +136,15 @@ namespace desktopworld
             return;
         }
 
-        generate_sky_view(_sky_a_uav.Get(), sample_a);
-        generate_sky_view(_sky_b_uav.Get(), sample_b);
-
         if (_render_method == render_method::sky_current)
         {
             generate_sky_view(_sky_current_uav.Get(), current);
         }
-        else if (_render_method == render_method::sky_blend_compute)
+        else if (_render_method == render_method::sky_blend_pixel ||
+                 _render_method == render_method::sky_blend_compute)
         {
-            blend_sky_views(blend_factor);
+            generate_sky_view(_sky_a_uav.Get(), sample_a);
+            generate_sky_view(_sky_b_uav.Get(), sample_b);
         }
     }
 
@@ -145,6 +158,11 @@ namespace desktopworld
         if (!_initialized || target == nullptr || width == 0 || height == 0)
         {
             return;
+        }
+
+        if (_render_method == render_method::sky_blend_compute)
+        {
+            blend_sky_views(blend_factor);
         }
 
         update_constant_buffers(current_sun, blend_factor);
@@ -168,6 +186,8 @@ namespace desktopworld
 
         ID3D11Buffer* constant_buffers[] = { _frame_cb.Get(), _atmosphere_cb.Get() };
         _context->PSSetConstantBuffers(0, 2, constant_buffers);
+        ID3D11SamplerState* sampler = _linear_sampler.Get();
+        _context->PSSetSamplers(0, 1, &sampler);
         ID3D11SamplerState* sampler = _linear_sampler.Get();
         _context->PSSetSamplers(0, 1, &sampler);
 
@@ -450,6 +470,8 @@ namespace desktopworld
         update_constant_buffers(sun, 0.0f);
         ID3D11ShaderResourceView* input = _transmittance_srv.Get();
         _context->CSSetShaderResources(0, 1, &input);
+        ID3D11SamplerState* sampler = _linear_sampler.Get();
+        _context->CSSetSamplers(0, 1, &sampler);
         ID3D11SamplerState* sampler = _linear_sampler.Get();
         _context->CSSetSamplers(0, 1, &sampler);
         _context->CSSetUnorderedAccessViews(0, 1, &target, nullptr);
