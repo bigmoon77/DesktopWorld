@@ -101,7 +101,7 @@ namespace desktopworld
     {
         if (_mode == frame_mode::on_demand && !_pending_frame)
         {
-            return 100;
+            return 0xFFFFFFFFu;
         }
 
         const auto remaining = _next_frame - now;
