@@ -13,6 +13,7 @@
 #include "desktopworld/monitor_manager.h"
 
 #include <Windows.h>
+#include <ShlObj.h>
 #include <d3d11.h>
 #include <dxgi.h>
 #include <wrl/client.h>
@@ -28,7 +29,10 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT m
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <iomanip>
 #include <memory>
+#include <sstream>
+#include <string>
 
 namespace desktopworld
 {
@@ -101,6 +105,54 @@ namespace desktopworld
         }
     }
 
+#ifdef DW_ENABLE_DEBUG_UI
+        std::filesystem::path create_sky_capture_path()
+        {
+            wchar_t local_app_data[MAX_PATH]{};
+            if (FAILED(SHGetFolderPathW(
+                nullptr,
+                CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE,
+                nullptr,
+                SHGFP_TYPE_CURRENT,
+                local_app_data)))
+            {
+                return {};
+            }
+
+            const std::filesystem::path directory =
+                std::filesystem::path(local_app_data) /
+                L"DesktopWorld" /
+                L"Captures";
+
+            std::error_code error;
+            std::filesystem::create_directories(directory, error);
+            if (error)
+            {
+                return {};
+            }
+
+            SYSTEMTIME time{};
+            GetLocalTime(&time);
+
+            std::wostringstream filename;
+            filename << L"sky_"
+                << std::setfill(L'0')
+                << std::setw(4) << time.wYear
+                << std::setw(2) << time.wMonth
+                << std::setw(2) << time.wDay
+                << L"_"
+                << std::setw(2) << time.wHour
+                << std::setw(2) << time.wMinute
+                << std::setw(2) << time.wSecond
+                << L"_"
+                << std::setw(3) << time.wMilliseconds
+                << L".pfm";
+
+            return directory / filename.str();
+        }
+#endif
+
+
     struct desktop_app::implementation
     {
         HINSTANCE instance = nullptr;
@@ -147,6 +199,17 @@ namespace desktopworld
 
         solar_state current_sun{};
         environment_controller environment{};
+
+#ifdef DW_ENABLE_DEBUG_UI
+        solar_state sample_sun_a{};
+        solar_state sample_sun_b{};
+        bool quality_measure_requested = false;
+        bool sky_capture_requested = false;
+        sky_quality_metrics blend_quality_metrics{};
+        sky_quality_metrics direct_quality_metrics{};
+        std::filesystem::path last_capture_path{};
+        std::wstring diagnostics_message{};
+#endif
 
         atmosphere_parameters pending_parameters{};
 
@@ -924,6 +987,10 @@ namespace desktopworld
                 environment.update(current_time);
 
             current_sun = environment_state.current_sun;
+#ifdef DW_ENABLE_DEBUG_UI
+            sample_sun_a = environment_state.sample_sun_a;
+            sample_sun_b = environment_state.sample_sun_b;
+#endif
             sample_interval =
                 environment_state.sample_window.interval_seconds;
             blend_factor = environment_state.sample_window.blend_factor;
@@ -1396,6 +1463,68 @@ namespace desktopworld
                     {
                         environment_dirty = true;
                     }
+
+                    ImGui::Separator();
+                    if (ImGui::Button("Measure HDR Errors (B vs D / A vs D)"))
+                    {
+                        quality_measure_requested = true;
+                        frames.request_frame();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Capture Linear HDR Sky (PFM)"))
+                    {
+                        sky_capture_requested = true;
+                        frames.request_frame();
+                    }
+
+                    ImGui::TextWrapped(
+                        "B vs D compares 256 x 128 linear-HDR LUT pixels. "
+                        "A vs D compares direct evaluation with the upsampled "
+                        "D result on an aspect-preserving grid capped at 1920 x 1080.");
+                    ImGui::TextWrapped(
+                        "Readback is synchronous and may briefly stall the GPU. "
+                        "Both operations run only after an explicit button press.");
+
+                    if (blend_quality_metrics.valid)
+                    {
+                        ImGui::Text(
+                            "B vs D (%u x %u, %llu pixels)",
+                            blend_quality_metrics.width,
+                            blend_quality_metrics.height,
+                            static_cast<unsigned long long>(
+                                blend_quality_metrics.pixel_count));
+                        ImGui::Text(
+                            "  MAE %.8g  RMSE %.8g  Max %.8g",
+                            blend_quality_metrics.mean_absolute_error,
+                            blend_quality_metrics.root_mean_squared_error,
+                            blend_quality_metrics.maximum_absolute_error);
+                    }
+
+                    if (direct_quality_metrics.valid)
+                    {
+                        ImGui::Text(
+                            "A vs D (%u x %u, %llu pixels)",
+                            direct_quality_metrics.width,
+                            direct_quality_metrics.height,
+                            static_cast<unsigned long long>(
+                                direct_quality_metrics.pixel_count));
+                        ImGui::Text(
+                            "  MAE %.8g  RMSE %.8g  Max %.8g",
+                            direct_quality_metrics.mean_absolute_error,
+                            direct_quality_metrics.root_mean_squared_error,
+                            direct_quality_metrics.maximum_absolute_error);
+                    }
+
+                    if (!diagnostics_message.empty())
+                    {
+                        ImGui::TextWrapped("%ls", diagnostics_message.c_str());
+                    }
+                    if (!last_capture_path.empty())
+                    {
+                        ImGui::TextWrapped(
+                            "Last PFM: %ls",
+                            last_capture_path.wstring().c_str());
+                    }
                     ImGui::EndTabItem();
                 }
 
@@ -1433,6 +1562,65 @@ namespace desktopworld
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
             context->OMSetRenderTargets(0, nullptr, nullptr);
             debug_swap_chain->Present(0, 0);
+        }
+#endif
+
+
+#ifdef DW_ENABLE_DEBUG_UI
+        void execute_pending_diagnostics()
+        {
+            if (quality_measure_requested)
+            {
+                quality_measure_requested = false;
+                sky_quality_metrics blend_result{};
+                sky_quality_metrics direct_result{};
+
+                if (atmosphere.analyze_quality(
+                    sample_sun_a,
+                    sample_sun_b,
+                    current_sun,
+                    blend_factor,
+                    desktop_width,
+                    desktop_height,
+                    blend_result,
+                    direct_result))
+                {
+                    blend_quality_metrics = blend_result;
+                    direct_quality_metrics = direct_result;
+                    diagnostics_message =
+                        L"HDR quality measurement completed.";
+                }
+                else
+                {
+                    diagnostics_message =
+                        L"HDR quality measurement failed. Check D3D11 debug output.";
+                }
+            }
+
+            if (sky_capture_requested)
+            {
+                sky_capture_requested = false;
+                const std::filesystem::path capture_path =
+                    create_sky_capture_path();
+
+                if (!capture_path.empty() &&
+                    atmosphere.capture_sky_pfm(
+                        capture_path,
+                        sample_sun_a,
+                        sample_sun_b,
+                        current_sun,
+                        blend_factor))
+                {
+                    last_capture_path = capture_path;
+                    diagnostics_message =
+                        L"Linear HDR Sky View LUT saved as PFM.";
+                }
+                else
+                {
+                    diagnostics_message =
+                        L"PFM capture failed. Check the output folder and D3D11 state.";
+                }
+            }
         }
 #endif
 
@@ -1550,6 +1738,10 @@ namespace desktopworld
                     frames.on_frame_submitted(frame_end);
                     update_fps_statistics(frame_end);
                 }
+
+#ifdef DW_ENABLE_DEBUG_UI
+                execute_pending_diagnostics();
+#endif
 
                 atmosphere.end_profile_frame();
 
