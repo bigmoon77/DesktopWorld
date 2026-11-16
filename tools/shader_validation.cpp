@@ -14,7 +14,7 @@ namespace
         const char* target;
     };
 
-    constexpr std::array<shader_entry, 15> shader_entries =
+    constexpr std::array<shader_entry, 17> shader_entries =
     {{
         { "CS_Transmittance", "cs_5_0" },
         { "CS_DirectIrradiance", "cs_5_0" },
@@ -30,7 +30,9 @@ namespace
         { "PS_Direct", "ps_5_0" },
         { "PS_SkyCurrent", "ps_5_0" },
         { "PS_SkyPair", "ps_5_0" },
-        { "PS_SkyFinal", "ps_5_0" }
+        { "PS_SkyFinal", "ps_5_0" },
+        { "PS_DirectRadiance", "ps_5_0" },
+        { "PS_SkyFinalRadiance", "ps_5_0" }
     }};
 
     bool compile_entry(
