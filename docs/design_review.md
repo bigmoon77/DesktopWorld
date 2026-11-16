@@ -1,10 +1,10 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象ブランチ: `feature/initial-implementation`
-- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.4
-- レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、およびHDR品質計測仕様とコードの照合
-- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測、PFMキャプチャ、DXGIプロセスGPUメモリ監視を実装。**
-- 未完了: Bruneton参照実装との物理精度比較、実機での複数モニター / Explorer 復旧検証。
+- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.5
+- レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、HDR品質計測、Bruneton CPU比較CLIの仕様とコードの照合
+- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
+- 未完了: 実際のGPU captureを用いたBruneton比較値の収集、実機での複数モニター / Explorer 復旧検証。
 - 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
 ## 1. レビュー対象と前提
@@ -92,14 +92,23 @@
 
 この計測は同一の近似大気モデル内で描画経路の誤差を見るもの。Bruneton 参照実装に対する物理精度を検証した結果とは扱わない。
 
-### 4.3 GPUメモリ監視の実装確認
+### 4.3 Bruneton CPU reference comparator
+
+- PFM capture は大気パラメータ、太陽方向、Render Method、View Mapping を同名 `.meta` に保存する。
+- Optional CMake target `bruneton_reference_compare` は公式CPU reference modelと、`dimensional_types` / `progress_bar` の必要部分だけを pinned commit で取得してビルドする。
+- Render Method A/B の capture を受け付け、C/D の時間補間を含む capture は拒否する。
+- RGB係数を 440 / 550 / 680 nm に一致させ、km⁻¹→m⁻¹ の変換と同一の density profile / atmosphere geometry を使用する。
+- 参照画像と combined / per-channel MAE・RMSE・max error を出力する。
+- 47波長CPU referenceの初回初期化・PFM実測はCIで実行していない。scalar solar intensityを47波長で一定とする近似を含むため、設計上の比較と実太陽スペクトルの完全な検証は区別する。
+
+### 4.4 GPUメモリ監視の実装確認
 
 - Debug UI は `IDXGIAdapter3::QueryVideoMemoryInfo` から Local / Non-local segment のプロセス使用量と OS Budget を取得する。
 - 約 1 秒間隔で取得し、Debug UI 以外の描画経路には追加の同期を導入しない。
 - 表示値は DesktopWorld 単体のリソース総量ではなく、対象プロセス全体の DXGI 使用量である。
 - ドライバー / segment が未対応の場合は unavailable と表示する。
 
-### 4.4 CIで確認した範囲
+### 4.5 CIで確認した範囲
 
 確認済みの Windows CI run では以下が成功している。
 
@@ -113,7 +122,7 @@
 
 | ID | 課題 | 現状 | 次の作業 |
 |---|---|---|---|
-| O-01 | Bruneton参照精度 | RGB近似・低解像度の複数散乱プロトタイプ | 参照実装と同条件の画像比較・数値誤差評価 |
+| O-01 | Bruneton参照精度 | 公式CPU referenceとの画像生成・誤差レポートCLIを実装。GPU captureを使った代表条件の実測は未実施 | 薄明・日付・緯度でcaptureし、参照比較の結果を収集。solar spectrumの近似条件を明記 |
 | O-02 | B vs D補間誤差 | Debug UI からワンショットで Linear HDR の MAE / RMSE / 最大誤差を計測できる | 薄明・緯度・日付の異なる条件で実測結果を収集 |
 | O-03 | A vs D描画経路・空間近似誤差 | 同一 Linear HDR 条件、最大 1920 x 1080 の解析グリッドで計測できる | 複数の出力解像度・太陽高度で実測結果を収集 |
 | O-04 | GPUメモリ | DXGI 1.4 によるプロセス単位 Local / Non-local 使用量・Budget を Debug UI に表示 | 複数GPU / iGPU / dGPU環境で取得可否と挙動を確認 |
@@ -147,6 +156,6 @@ OnDemand は明示的な描画要求がない限り待機し、システム時�
 ### 次工程へ進む条件
 
 1. 単一 SwapChain の実機統合テストを行う。
-2. 大気モデルの画像誤差計測と参照実装比較を実装する。
+2. Debug captureからBruneton参照画像・誤差レポートを生成し、複数の太陽高度・日付・緯度で測定値を収集する。
 
 以上より、**設計文書の構成矛盾修正は合格。プロジェクト全体の品質要件は未達項目が残るため、残作業を継続する。**
