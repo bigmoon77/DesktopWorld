@@ -60,6 +60,12 @@ namespace desktopworld
         float gpu_sky_generation_ms = 0.0f;
         float gpu_blend_ms = 0.0f;
         float current_fps = 0.0f;
+        float gpu_local_memory_usage_mb = 0.0f;
+        float gpu_local_memory_budget_mb = 0.0f;
+        float gpu_non_local_memory_usage_mb = 0.0f;
+        float gpu_non_local_memory_budget_mb = 0.0f;
+        bool gpu_local_memory_valid = false;
+        bool gpu_non_local_memory_valid = false;
     };
 
     inline float clamp_float(const float value, const float minimum, const float maximum)
