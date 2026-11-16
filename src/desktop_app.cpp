@@ -32,8 +32,6 @@ namespace desktopworld
         constexpr wchar_t debug_class_name[] = L"DesktopWorldDebugWindow";
         constexpr UINT_PTR desktop_recheck_timer = 1;
 
-        desktop_app::implementation* active_implementation = nullptr;
-
         std::int64_t system_time_to_unix_seconds(const SYSTEMTIME& time)
         {
             FILETIME file_time{};
@@ -194,7 +192,6 @@ namespace desktopworld
         bool environment_dirty = true;
         bool fixed_time_enabled = false;
         bool debug_window_visible = true;
-        bool pending_parameters_dirty = false;
         bool show_sky_samples = true;
 
         unsigned int desktop_width = 0;
@@ -614,11 +611,6 @@ namespace desktopworld
 
         void update_environment()
         {
-            if (!environment_dirty)
-            {
-                return;
-            }
-
             const std::int64_t current_epoch =
                 system_time_to_unix_seconds(current_time);
             const std::int64_t interval =
@@ -626,7 +618,10 @@ namespace desktopworld
             const std::int64_t sample_start =
                 (current_epoch / interval) * interval;
 
-            if (sample_start != sample_start_time || interval != sample_interval)
+            const bool sample_pair_changed =
+                sample_start != sample_start_time || interval != sample_interval;
+
+            if (sample_pair_changed || environment_dirty)
             {
                 sample_start_time = sample_start;
                 sample_interval = interval;
@@ -637,20 +632,19 @@ namespace desktopworld
 
                 sample_sun_a = solar_model::calculate(time_a, latitude, longitude);
                 sample_sun_b = solar_model::calculate(time_b, latitude, longitude);
+
+                atmosphere.update_sky_samples(
+                    sample_sun_a,
+                    sample_sun_b,
+                    current_sun,
+                    calculate_blend_factor(current_epoch, sample_start_time, sample_interval));
+                environment_dirty = false;
             }
 
             blend_factor = calculate_blend_factor(
                 current_epoch,
                 sample_start_time,
                 sample_interval);
-
-            atmosphere.update_sky_samples(
-                sample_sun_a,
-                sample_sun_b,
-                current_sun,
-                blend_factor);
-
-            environment_dirty = false;
         }
 
         void render_desktop()
@@ -665,6 +659,7 @@ namespace desktopworld
                 desktop_render_target.Get(),
                 clear_color);
 
+            atmosphere.update_current_sky(current_sun);
             atmosphere.draw(
                 desktop_render_target.Get(),
                 desktop_width,
@@ -753,14 +748,16 @@ namespace desktopworld
 
                 if (ImGui::BeginTabItem("Solar"))
                 {
-                    ImGui::Checkbox("Use system UTC time", &fixed_time_enabled);
+                    ImGui::Checkbox("Use fixed UTC time", &fixed_time_enabled);
                     if (fixed_time_enabled)
                     {
-                        if (ImGui::InputInt("Year", &utc_year) |
-                            ImGui::InputInt("Month", &utc_month) |
-                            ImGui::InputInt("Day", &utc_day) |
-                            ImGui::InputInt("Hour", &utc_hour) |
-                            ImGui::InputInt("Minute", &utc_minute))
+                        bool time_changed = false;
+                        time_changed |= ImGui::InputInt("Year", &utc_year);
+                        time_changed |= ImGui::InputInt("Month", &utc_month);
+                        time_changed |= ImGui::InputInt("Day", &utc_day);
+                        time_changed |= ImGui::InputInt("Hour", &utc_hour);
+                        time_changed |= ImGui::InputInt("Minute", &utc_minute);
+                        if (time_changed)
                         {
                             fixed_time.wYear = static_cast<WORD>(std::clamp(utc_year, 1601, 9999));
                             fixed_time.wMonth = static_cast<WORD>(std::clamp(utc_month, 1, 12));
@@ -867,6 +864,7 @@ namespace desktopworld
                     if (ImGui::Button("Apply and Rebuild Base LUT"))
                     {
                         atmosphere.set_atmosphere_parameters(pending_parameters);
+                        atmosphere.set_exposure(pending_parameters.exposure);
                         environment_dirty = true;
                         frames.request_frame();
                     }
@@ -885,7 +883,7 @@ namespace desktopworld
                         4.0f);
                     if (ImGui::Button("Apply Exposure"))
                     {
-                        atmosphere.set_atmosphere_parameters(pending_parameters);
+                        atmosphere.set_exposure(pending_parameters.exposure);
                         frames.request_frame();
                     }
                     ImGui::TextWrapped(
@@ -1101,14 +1099,12 @@ namespace desktopworld
         implementation app{};
         app.instance = instance;
         _implementation = &app;
-        active_implementation = &app;
 
         if (!app.register_window_classes() ||
             !app.create_windows(show_command) ||
             !app.create_device_and_swap_chains())
         {
             app.shutdown();
-            active_implementation = nullptr;
             return 1;
         }
 
@@ -1119,7 +1115,6 @@ namespace desktopworld
         const int result = app.execute();
         app.shutdown();
 
-        active_implementation = nullptr;
         _implementation = nullptr;
         return result;
     }
