@@ -1,102 +1,140 @@
 # DesktopWorld 設計整合レビュー
 
-- 対象: 現行 feature/initial-implementation
-- 基準文書: docs/requirements.md v1.1 / docs/detailed_design.md v1.1
-- 結果: **設計文書の矛盾を解消。P0実装をCIで検証。P1は実装プロトタイプまで。**
-- 注意: Debug / Release のビルド成功は、要件充足・実機描画・物理精度の保証ではない。
+- 対象ブランチ: `feature/initial-implementation`
+- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.2
+- レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性
+- 結果: **単一仮想デスクトップ描画方式に統一。文書上のSwapChain構成矛盾を修正。設計レビューは条件付き合格。**
+- 未完了: 大気モデルの品質評価、画像誤差計測、実機での複数モニター / Explorer 復旧検証。
+- 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
-## 1. リポジトリ確認
+## 1. レビュー対象と前提
 
-現行ブランチには README と実装コードが存在していたが、独立した要件定義書と詳細設計書は存在していなかった。今回、会話で決定した基本方針と現行コードから文書を再構成した。
+今回のレビューでは、要件定義・詳細設計・設計レビュー文書を読み直し、現行実装のデスクトップホスト生成・SwapChain生成・モニター変更通知・ホスト再構築処理と照合した。
 
-## 2. 重大な不一致
+初期実装の方式は次のとおりである。
 
-| ID | 項目 | 現状 | 要件・設計上の判断 | 優先度 |
+- モニターを列挙し、各モニターの物理座標の union から仮想デスクトップ矩形を求める。
+- 仮想デスクトップ全体を包含する WorkerW 描画親を1つ取得する。
+- 仮想デスクトップ全体を覆う子描画ウィンドウを1つ生成する。
+- D3D11 device / immediate context、SwapChain、RenderTarget はそれぞれ単一構成とする。
+- すべてのモニターに同じ空の環境を連続した1つの描画面として表示する。
+- モニター構成変更・WorkerW 消失時は描画面全体を再構築する。全体を構築できない間は描画を停止し、部分モニターだけの表示を継続しない。
+
+モニターごとの独立 SwapChain / 独立環境は初期方式に含めず、将来拡張として扱う。
+
+## 2. 重大な不整合と修正内容
+
+| ID | 項目 | 修正前の問題 | 統一した仕様 | 状態 |
 |---|---|---|---|---|
-| R-01 | 要件・詳細設計 | 独立文書なし | 2 文書を追加し、実装とのトレーサビリティを持たせる | 完了 |
-| R-02 | 観測地点 | Tokyo 座標をコードへ直書き | settings.ini から取得し Release でも設定可能にする | P0 |
-| R-03 | 時刻 | 内部 UTC / Debug UI も UTC | 内部 UTC を正式仕様とする。ローカル時計の瞬間を UTC として取得する | 解消 |
-| R-04 | 時間サンプル | 60 / 30 / 15 分の自動切替 | 通常 60 分、薄明で 30 / 15 分に短縮と明文化 | 解消 |
-| R-05 | キャッシュ | Sky View 2 枚のみ保持 | 2-slot rolling cache と Static LUT cache を別物として定義 | 解消 |
-| R-06 | 大気モデル | RGB近似の複数散乱を追加。参照精度は未検証 | Bruneton系の計算順序・Static LUT分離を実装。高精度な参照検証は残る | P1 |
-| R-07 | 描画拡張 | desktop_app と atmosphere_renderer に処理が集中 | RenderSystem / RenderPass を追加し責務分離 | P0 |
-| R-08 | WorkerW | 取得失敗時に Progman へ fallback | アイコン背面を保証できない可能性があるため、安全に失敗する仕様へ変更 | P0 |
-| R-09 | Explorer 再起動 | TaskbarCreated と3秒のHWND検査、WorkerW再構築を追加。実機検証は未実施 | shell再起動・WorkerW再生成を実機検証 | P2 |
-| R-10 | モニター | monitor_managerで列挙し、仮想画面全体を1つのSwapChainで覆う。WorkerW client areaが全範囲を包含しない場合は安全に失敗 | 複数GPU/独立モニターSwapChain・実機構成の検証 | P2 |
-| R-11 | 品質検証 | 太陽位置・サンプル・設定・Pass順の単体テストとHLSL compileを実施。B vs D誤差は未実装 | GPU画像比較とB/D誤差を追加 | P1 |
-| R-12 | GPU 計測 | Timestamp QueryでStatic LUT全体と各大気計算段階を計測。CPU update / submitも分離 | 計測値を実GPU実行で確認 | P1 |
-| R-13 | 過去日時 | epoch / interval の整数除算が負数で 0 方向丸め | floor_div を採用する | P0 |
+| R-01 | SwapChain構成 | 詳細設計 2.1 はモニターごと、FR-01 / 詳細設計 7.2 は仮想デスクトップ全体に1つ | 単一の仮想デスクトップ子ウィンドウ / SwapChain / RenderTarget | 修正済み |
+| R-02 | 起動時WorkerW取得 | 「各モニターのWorkerW」と読める記述が単一ホスト方式と不整合 | 仮想デスクトップ全体を包含する単一の WorkerW 描画親を取得 | 修正済み |
+| R-03 | RenderContext | 「現在のモニター向けRenderTarget」と単一描画面の説明が不一致 | 仮想デスクトップ全体の単一 RenderTarget / viewport | 修正済み |
+| R-04 | モニター変更時の復旧 | 「対象ホストを破棄し残りのモニターを継続」は単一SwapChain方式と不整合 | 全体を再列挙・再構築し、成功まで描画面全体を停止 | 修正済み |
+| R-05 | 終了処理 | 複数SwapChainを前提とする表現 | 単一SwapChain / RenderTarget / 描画ウィンドウの解放 | 修正済み |
 
-## 3. 現行実装の方式と意味を明確化
+### 2.1 採用した理由
 
-### 3.1 A / B / C / D
+単一 SwapChain 方式を採用する理由は、初期要件が「全モニターに同じ空を連続した描画面として表示する」ことだからである。
 
-- A は各出力ピクセルで3D scattering LUTからradianceを直接評価する。
-- B は現在時刻の太陽方向から Sky View LUT を生成する。
-- C はサンプル時刻 A/B の Sky View を Pixel Shader で補間する。
-- D はサンプル時刻 A/B の Sky View を Compute Shader で補間し、その結果を描画する。
+この要件に対して、仮想デスクトップ矩形を1つの描画面に対応させることで、モニター間の描画座標・時刻サンプル・環境パラメータを一元化できる。モニターごとの独立 SwapChain は、独立環境や per-monitor 設定を導入する段階で改めて設計する。
 
-A/B/C/D は同じRGB大気モデルとStatic LUTを共有する。現在の大気モデルはRayleigh / Mieの単一散乱に加えて、複数散乱の次数反復、三角形オゾン密度、拡散地面反射を含む低解像度プロトタイプである。Aは3D scattering LUTを直接参照し、Bは現在時刻Sky View LUTを生成、C/Dは時間サンプルを補間する。AとDの差はStatic LUT・Sky View LUT・時間補間の近似誤差を含み、現実の大気に対する物理精度の差を示すものではない。
+### 2.2 モニター変更時の安全性
 
-B は比較基準として毎回現在時刻 LUT を生成するため、通常運用の既定方式にはしない。D を既定方式とする。
+単一 SwapChain 方式では、モニター構成が変化した際に一部だけを残して継続すると、仮想デスクトップ全体を覆うという要件を破る。
 
-### 3.2 Static LUT と Sky View LUT
+したがって、次の順序を正式仕様とする。
 
-現行コードには Transmittance / Direct Irradiance / Single Rayleigh / Single Mie / Scattering Density / Multiple Scattering / Indirect Irradiance / Sky View LUTがある。Bruneton系の段階的な計算順序を参考にしたRGB近似であり、参照実装のスペクトル表現・積分解像度・全精度をそのまま再現したものではない。
+1. Display / DPI / Shell の通知または HWND 検査で変更を検出する。
+2. 旧描画面の RenderTarget / SwapChain / 子ウィンドウを破棄する。
+3. モニターを再列挙して仮想デスクトップ矩形を再計算する。
+4. 全体を包含する WorkerW を再取得する。
+5. 単一子ウィンドウ / SwapChain / RenderTarget を再生成する。
+6. すべて成功した場合だけ描画を再開する。
+7. 失敗した場合は部分表示せず、描画停止状態で再試行する。
 
-Static LUT は大気パラメータに依存する。太陽時刻が変わるだけで再生成してはいけない。
+## 3. 要件定義と詳細設計の照合
 
-Sky View LUT は太陽方向に依存する。現在時刻を挟む 2 枚を保持する方式は、24 時間分を事前に保持する方式とは異なる。これを明示した。
+| 領域 | 要件 | 詳細設計 | 判定 |
+|---|---|---|---|
+| デスクトップホスト | アイコン背面、入力透過、安全な失敗 | WorkerWHost、単一仮想画面ホスト | 整合 |
+| 複数モニター | 仮想デスクトップ全体を連続表示 | bounds union と単一 SwapChain | 整合 |
+| モニター構成変更 | 全体を覆う状態を維持 | 全体再構築、失敗時は停止・再試行 | 整合 |
+| 時刻 | UTC を内部標準とする | UTC epoch seconds | 整合 |
+| 太陽位置 | 日時・緯度・経度から算出 | 座標系・式・境界テストを定義 | 整合 |
+| サンプル | 60 / 30 / 15 分、薄明で短縮 | 同一の高度境界と floor division | 整合 |
+| LUT | Static と時刻依存 Sky View を分離 | parameter hash と Sample Pair を分離 | 整合 |
+| 描画方式 | A / B / C / D を比較 | 各方式の入出力・補間位置を定義 | 整合 |
+| 大気モデル | Bruneton 系を最終基準とする | RGB・低解像度プロトタイプと最終精度検証を区別 | 整合。ただし品質未達 |
+| Render構造 | Render Pass 単位で拡張 | 直列 RenderSystem / AtmosphereSkyPass | 整合 |
+| 設定 | Releaseでも設定を保持 | settings.ini と範囲検証 | 整合 |
+| Diagnostics | GPU / CPU 計測と品質評価 | Timestamp / 画像比較設計 | 設計整合。計測機能は一部未実装 |
+| テスト | 数値・設定・Pass・HLSLを検証 | Unit / GPU / Integration Test | 整合。ただし未実装テストあり |
 
-## 4. 実装で確認された具体的な修正項目
+## 4. 実装との照合
 
-### P0: CI検証済み
+### 4.1 確認できた実装
 
-1. settings_storeを追加し、設定保存・再読み込みと範囲検証を実装した。
-2. EnvironmentController / TimeProvider / WorkerWHostを分離した。
-3. 直列RenderSystem / RenderPass / AtmosphereSkyPassを追加した。
-4. WorkerW取得失敗時にProgmanへ描画するfallbackを削除した。
-5. 負数UTCに対応するfloor_divとサンプルスケジュールのUnit Testを追加した。
-6. 太陽位置、サンプルキャッシュ、設定往復、FrameScheduler、RenderPass順をUnit Test化した。
-7. CPU update / render submit とGPU Timestampの計測を追加した。
+- `desktop_app` は単一の desktop child window と desktop SwapChain / RenderTarget を保持する。
+- `monitor_manager` の仮想デスクトップ bounds を基準に描画面の寸法・位置を決定する。
+- WorkerW client area が仮想デスクトップ全体を包含しない場合、描画面生成を失敗させる。
+- `WM_DISPLAYCHANGE` / `WM_DPICHANGED`、TaskbarCreated、定期 HWND 検査を再構築要求につなげる。
+- ホスト再構築では旧描画面を破棄し、新しい描画面の生成に成功した場合だけ描画を再開する。
+- WorkerW の取得・再構築に失敗した場合は描画面を無効化し、定期検査で再試行する。
+- D3D11 device / immediate context は単一構成である。
 
-### P1: 大気散乱の品質確立
+### 4.2 CIで確認した範囲
 
-1. Transmittance / Direct Irradiance / Single Scatteringを生成し、order 2..NについてScattering Density / Indirect Irradiance / Multiple Scatteringを反復するGPUパイプラインを追加した。
-2. Mie extinction、三角形オゾン密度、ground albedoを設定可能にした。
-3. parameter hash・version・format・dimensionsを含むStatic LUTディスクキャッシュを追加した。
-4. Precompute total / Transmittance / Direct Irradiance / Single Scattering / Multiple ScatteringのGPU Timestampを分離した。
-5. 参照画像との物理誤差、B/Dのlinear HDR誤差、低角度積分の妥当性は未検証であり、今後の品質確立タスクとする。
+確認済みの Windows CI run では以下が成功している。
 
-### P2: デスクトップホストの実機検証・拡張
+- Debug Configure / Build / Test
+- Release Build / Test
+- 太陽位置・サンプル区間・環境サンプルキャッシュ・設定往復・Frame Controller・RenderPass順序のコアテスト
 
-1. Explorer 再起動時の WorkerW 再取得処理は追加済み。Explorer 再起動・テーマ変更を含む実機検証が残る。
-2. モニター列挙と仮想画面全体を覆う1つのSwapChainを追加済み。異なるGPU・混在DPI・モニター配置変更・WorkerWの実クライアント範囲は実機検証が残る。
-3. 各モニター独立SwapChain・独立環境・per-monitor LUTは後続拡張。
-4. ウィンドウ入力透過・アイコン背面描画を実機で確認する。
+これらはロジックとビルドの検証であり、実際の Explorer / WorkerW / 複数モニター構成を用いた実機統合テストの代替にはならない。
 
-## 5. レビュー結果
+## 5. 残存課題と設計上の注意
 
-### 要件と詳細設計
+| ID | 課題 | 現状 | 次の作業 |
+|---|---|---|---|
+| O-01 | Bruneton参照精度 | RGB近似・低解像度の複数散乱プロトタイプ | 参照実装と同条件の画像比較・数値誤差評価 |
+| O-02 | B vs D補間誤差 | MAE / RMSE / 最大誤差の自動測定が未実装 | Linear HDR画像のキャプチャと比較を実装 |
+| O-03 | A vs Dモデル/空間近似誤差 | 自動測定が未実装 | 比較条件を固定して測定 |
+| O-04 | GPUメモリ | GPU Timestamp はあるがメモリ計測なし | DXGI / D3D11 で取得可能な範囲を定義して実装 |
+| O-05 | 実機ホスト検証 | WorkerW再取得処理はあるが実機検証未完了 | Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
+| O-06 | OnDemandの時刻更新 | 描画要求がない間の時刻再評価タイミングを要確認 | 次のサンプル境界で起床するタイマー設計を確認 |
+| O-07 | 設定項目一覧 | 実装済み大気パラメータと設定例の記載差が残る可能性 | settings_store の実キーとINI例を一項目ずつ照合 |
 
-- 時刻は内部 UTC と明確化した。
-- 1 時間基準と薄明での短縮間隔を両立させた。
-- 2-slot Sky Sample cache と Static LUT cache を分離した。
-- Bruneton 系事前計算の固定 LUT と時刻依存 Sky View LUT を分離した。
-- A～D の役割と比較できる誤差の意味を明確化した。
-- RenderPass を導入するが、過剰な汎用レンダーグラフは導入しない。
-- Platform / Environment / Cache / Render / Diagnostics の依存関係を定義した。
+### 5.1 OnDemand時刻更新の確認事項
 
-**設計文書間の矛盾は解消した。**
+OnDemand は描画要求がない限り通常のフレームループが待機する。したがって、システム時刻がサンプル境界を越えた際に、描画要求がなくても環境更新を起動すべきかを要件として確定する必要がある。
 
-### 実装との整合性
+背景の時間変化を自動で追従させる場合、OnDemand であっても「次に必要な環境サンプル境界」または「表示上必要な時刻更新期限」に合わせて起床する必要がある。現行仕様の FR-06 だけではこの挙動の定義が不足しているため、次回の要件改訂候補とする。
 
-P0の設計項目は実装され、Windows CIでDebug/ReleaseのビルドとコアUnit Test、15本のHLSLエントリーを検証した。P1のRGB複数散乱パイプラインとStatic LUT cacheも実装された。
+## 6. 最終判定
 
-ただし、GPU実機での画像評価、Bruneton参照画像との誤差計測、B/D時間補間誤差、実際の起動時間・GPUコストは未検証である。現段階のP1は「動く低解像度プロトタイプ」であり、物理精度を確立した完成版ではない。
+### 設計文書
 
-## 6. 参照資料
+**単一仮想デスクトップ描画方式について、要件定義と詳細設計の矛盾は解消した。**
 
-- Eric Bruneton, Precomputed Atmospheric Scattering: a New Implementation (2017): https://ebruneton.github.io/precomputed_atmospheric_scattering/
-- Reference model precomputation order and texture caching: https://ebruneton.github.io/precomputed_atmospheric_scattering/atmosphere/reference/model.cc.html
-- Scattering and transmittance equations / lookup functions: https://ebruneton.github.io/precomputed_atmospheric_scattering/atmosphere/functions.glsl.html
+- 起動・終了シーケンス
+- RenderContext
+- WorkerW取得
+- モニター列挙
+- モニター構成変更時の復旧
+- エラー処理
+- Integration Test
+
+これらを同じ単一描画面のライフサイクルに統一した。
+
+### 実装
+
+単一 SwapChain の構成とホスト再構築の基本処理は現行コードと一致する。ただし、モニター構成変更・Explorer再起動・混在DPIを含む実機検証は未完了である。
+
+### 次工程へ進む条件
+
+1. settings.ini の全項目と設定仕様を照合する。
+2. OnDemand 時の環境更新期限を要件として確定する。
+3. 単一 SwapChain の実機統合テストを行う。
+4. 大気モデルの画像誤差計測と参照実装比較を実装する。
+
+以上より、**設計文書の構成矛盾修正は合格。プロジェクト全体の品質要件は未達項目が残るため、残作業を継続する。**
