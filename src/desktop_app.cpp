@@ -106,8 +106,14 @@ namespace desktopworld
         HWND desktop_window = nullptr;
         HWND debug_window = nullptr;
         HWND worker_window = nullptr;
+        HWND host_monitor_window = nullptr;
         workerw_host desktop_host{};
         bool running = true;
+        bool host_rebuild_requested = false;
+        bool host_rebuilding = false;
+        bool shutting_down = false;
+        UINT taskbar_created_message = 0;
+        static constexpr UINT_PTR host_check_timer_id = 2;
         bool environment_dirty = true;
         bool current_sky_generated = false;
         int sample_interval_override_seconds = 0;
