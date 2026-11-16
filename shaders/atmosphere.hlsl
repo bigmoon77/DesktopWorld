@@ -864,12 +864,14 @@ void CS_Transmittance(uint3 dispatch_id : SV_DispatchThreadID)
     float optical_mie = 0.0;
     float optical_ozone = 0.0;
 
-    const float3 transmittance = integrate_transmittance(
-        radius,
-        mu,
-        optical_rayleigh,
-        optical_mie,
-        optical_ozone);
+    const float3 transmittance = ray_intersects_ground(radius, mu)
+        ? 0.0.xxx
+        : integrate_transmittance(
+            radius,
+            mu,
+            optical_rayleigh,
+            optical_mie,
+            optical_ozone);
 
     g_output_2d[dispatch_id.xy] = float4(transmittance, 1.0);
 }
