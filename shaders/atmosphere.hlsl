@@ -248,13 +248,13 @@ float3 get_transmittance(
     {
         return min(
             sample_transmittance_to_top(radius_d, -mu_d) /
-                max(sample_transmittance_to_top(radius, -mu), 1.0e-6.xxx),
+                max(sample_transmittance_to_top(radius, -mu), float3(1.0e-6, 1.0e-6, 1.0e-6)),
             1.0.xxx);
     }
 
     return min(
         sample_transmittance_to_top(radius, mu) /
-            max(sample_transmittance_to_top(radius_d, mu_d), 1.0e-6.xxx),
+            max(sample_transmittance_to_top(radius_d, mu_d), float3(1.0e-6, 1.0e-6, 1.0e-6)),
         1.0.xxx);
 }
 
