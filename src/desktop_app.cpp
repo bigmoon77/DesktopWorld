@@ -10,6 +10,7 @@
 #include "desktopworld/environment_controller.h"
 #include "desktopworld/workerw_host.h"
 #include "desktopworld/time_provider.h"
+#include "desktopworld/monitor_manager.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -108,6 +109,10 @@ namespace desktopworld
         HWND worker_window = nullptr;
         HWND host_monitor_window = nullptr;
         workerw_host desktop_host{};
+        monitor_manager displays{};
+        RECT desktop_virtual_bounds{};
+        int desktop_parent_x = 0;
+        int desktop_parent_y = 0;
         bool running = true;
         bool host_rebuild_requested = false;
         bool host_rebuilding = false;
@@ -379,6 +384,65 @@ namespace desktopworld
             return true;
         }
 
+        bool update_desktop_parent_bounds()
+        {
+            if (worker_window == nullptr ||
+                !IsWindow(worker_window) ||
+                !displays.is_valid())
+            {
+                return false;
+            }
+
+            const RECT virtual_bounds = displays.virtual_bounds();
+            POINT corners[2] =
+            {
+                { virtual_bounds.left, virtual_bounds.top },
+                { virtual_bounds.right, virtual_bounds.bottom }
+            };
+
+            SetLastError(ERROR_SUCCESS);
+            MapWindowPoints(
+                HWND_DESKTOP,
+                worker_window,
+                corners,
+                ARRAYSIZE(corners));
+
+            const DWORD mapping_error = GetLastError();
+            if (mapping_error != ERROR_SUCCESS)
+            {
+                return false;
+            }
+
+            desktop_parent_x = corners[0].x;
+            desktop_parent_y = corners[0].y;
+
+            RECT parent_client{};
+            if (!GetClientRect(worker_window, &parent_client))
+            {
+                return false;
+            }
+
+            const int mapped_width = corners[1].x - corners[0].x;
+            const int mapped_height = corners[1].y - corners[0].y;
+
+            if (mapped_width <= 0 ||
+                mapped_height <= 0 ||
+                desktop_parent_x < parent_client.left ||
+                desktop_parent_y < parent_client.top ||
+                desktop_parent_x + mapped_width > parent_client.right ||
+                desktop_parent_y + mapped_height > parent_client.bottom)
+            {
+                OutputDebugStringW(
+                    L"DesktopWorld: WorkerW client area does not contain the virtual desktop.\n");
+                return false;
+            }
+
+            desktop_virtual_bounds = virtual_bounds;
+            desktop_width = static_cast<unsigned int>(mapped_width);
+            desktop_height = static_cast<unsigned int>(mapped_height);
+            return true;
+        }
+
         bool create_desktop_window()
         {
             worker_window = desktop_host.find_desktop_parent();
@@ -387,15 +451,19 @@ namespace desktopworld
                 return false;
             }
 
-            refresh_desktop_bounds();
+            if (!refresh_desktop_bounds() ||
+                !update_desktop_parent_bounds())
+            {
+                return false;
+            }
 
             desktop_window = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
                 desktop_class_name,
                 L"DesktopWorld Surface",
                 WS_CHILD | WS_VISIBLE,
-                0,
-                0,
+                desktop_parent_x,
+                desktop_parent_y,
                 static_cast<int>(desktop_width),
                 static_cast<int>(desktop_height),
                 worker_window,
@@ -424,7 +492,10 @@ namespace desktopworld
 
         bool create_windows(const int show_command)
         {
-            refresh_desktop_bounds();
+            if (!refresh_desktop_bounds())
+            {
+                return false;
+            }
             GetSystemTime(&fixed_time);
 #ifdef DW_ENABLE_DEBUG_UI
             utc_year = fixed_time.wYear;
@@ -504,22 +575,44 @@ namespace desktopworld
             return true;
         }
 
-        void refresh_desktop_bounds()
+        bool refresh_desktop_bounds()
         {
-            desktop_width = static_cast<unsigned int>(GetSystemMetrics(SM_CXSCREEN));
-            desktop_height = static_cast<unsigned int>(GetSystemMetrics(SM_CYSCREEN));
-
-            if (desktop_window != nullptr)
+            if (!displays.refresh())
             {
+                desktop_width = 0;
+                desktop_height = 0;
+                return false;
+            }
+
+            desktop_virtual_bounds = displays.virtual_bounds();
+            desktop_width = static_cast<unsigned int>(
+                desktop_virtual_bounds.right - desktop_virtual_bounds.left);
+            desktop_height = static_cast<unsigned int>(
+                desktop_virtual_bounds.bottom - desktop_virtual_bounds.top);
+
+            if (desktop_width == 0 || desktop_height == 0)
+            {
+                return false;
+            }
+
+            if (desktop_window != nullptr && worker_window != nullptr)
+            {
+                if (!update_desktop_parent_bounds())
+                {
+                    return false;
+                }
+
                 SetWindowPos(
                     desktop_window,
                     nullptr,
-                    0,
-                    0,
+                    desktop_parent_x,
+                    desktop_parent_y,
                     static_cast<int>(desktop_width),
                     static_cast<int>(desktop_height),
                     SWP_NOZORDER | SWP_NOACTIVATE);
             }
+
+            return true;
         }
 
         bool create_desktop_swap_chain()
