@@ -4,6 +4,10 @@
 #include "desktopworld/frame_controller.h"
 #include "desktopworld/solar_model.h"
 #include "desktopworld/types.h"
+#include "desktopworld/settings_store.h"
+#include "desktopworld/time_sample_scheduler.h"
+#include "desktopworld/render_system.h"
+#include "desktopworld/atmosphere_sky_pass.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -30,8 +34,6 @@ namespace desktopworld
     {
         constexpr wchar_t desktop_class_name[] = L"DesktopWorldDesktopWindow";
         constexpr wchar_t debug_class_name[] = L"DesktopWorldDebugWindow";
-        constexpr UINT_PTR desktop_recheck_timer = 1;
-
         std::int64_t system_time_to_unix_seconds(const SYSTEMTIME& time)
         {
             FILETIME file_time{};
@@ -66,38 +68,6 @@ namespace desktopworld
             SYSTEMTIME result{};
             FileTimeToSystemTime(&file_time, &result);
             return result;
-        }
-
-        float calculate_blend_factor(
-            const std::int64_t current_time,
-            const std::int64_t sample_start,
-            const std::int64_t interval)
-        {
-            if (interval <= 0)
-            {
-                return 0.0f;
-            }
-
-            return clamp_float(
-                static_cast<float>(current_time - sample_start) /
-                    static_cast<float>(interval),
-                0.0f,
-                1.0f);
-        }
-
-        std::int64_t get_sample_interval_seconds(const float solar_elevation)
-        {
-            const float absolute_elevation = std::abs(solar_elevation);
-
-            if (absolute_elevation <= 6.0f)
-            {
-                return 15 * 60;
-            }
-            if (absolute_elevation <= 12.0f)
-            {
-                return 30 * 60;
-            }
-            return 60 * 60;
         }
 
         HWND find_workerw()
@@ -147,17 +117,7 @@ namespace desktopworld
                 },
                 reinterpret_cast<LPARAM>(&context));
 
-            if (context.worker != nullptr)
-            {
-                return context.worker;
-            }
-
-            if (program_manager != nullptr)
-            {
-                return program_manager;
-            }
-
-            return nullptr;
+            return context.worker;
         }
 
         HRESULT create_render_target_view(
@@ -194,6 +154,10 @@ namespace desktopworld
         int sample_interval_override_seconds = 0;
         bool fixed_time_enabled = false;
         bool debug_window_visible = true;
+        settings_store settings_storage{};
+        app_settings settings{};
+        render_system render{};
+
 #ifdef DW_ENABLE_DEBUG_UI
         bool pending_time_dirty = false;
 #endif
@@ -329,6 +293,62 @@ namespace desktopworld
             }
 
             return DefWindowProcW(window, message, wparam, lparam);
+        }
+
+        bool load_settings()
+        {
+            if (!settings_storage.load(settings))
+            {
+                OutputDebugStringW(
+                    L"DesktopWorld: settings could not be loaded; using defaults.\n");
+                settings = app_settings{};
+            }
+
+            latitude = settings.latitude;
+            longitude = settings.longitude;
+            sample_interval_override_seconds =
+                settings.sample_interval_override_seconds;
+            pending_parameters = settings.atmosphere;
+
+            frames.set_adaptive_fps(settings.base_fps, settings.twilight_fps);
+            frames.set_fixed_fps(settings.fixed_fps);
+            frames.set_mode(settings.frame_update_mode);
+
+#ifdef DW_ENABLE_DEBUG_UI
+            selected_method = settings.method;
+            selected_frame_mode = settings.frame_update_mode;
+            base_fps = settings.base_fps;
+            fixed_fps = settings.fixed_fps;
+            twilight_fps = settings.twilight_fps;
+#endif
+            return true;
+        }
+
+        void save_settings()
+        {
+            settings.latitude = latitude;
+            settings.longitude = longitude;
+            settings.method = atmosphere.get_render_method();
+            settings.frame_update_mode = frames.mode();
+            settings.sample_interval_override_seconds =
+                sample_interval_override_seconds;
+
+#ifdef DW_ENABLE_DEBUG_UI
+            settings.base_fps = base_fps;
+            settings.fixed_fps = fixed_fps;
+            settings.twilight_fps = twilight_fps;
+#else
+            settings.base_fps = settings.base_fps;
+            settings.fixed_fps = settings.fixed_fps;
+            settings.twilight_fps = settings.twilight_fps;
+#endif
+            settings.atmosphere = atmosphere.get_parameters();
+
+            if (!settings_storage.save(settings))
+            {
+                OutputDebugStringW(
+                    L"DesktopWorld: failed to save settings.\n");
+            }
         }
 
         bool register_window_classes()
@@ -604,7 +624,22 @@ namespace desktopworld
                 return false;
             }
 
-            pending_parameters = atmosphere.get_parameters();
+            if (!atmosphere.set_atmosphere_parameters(settings.atmosphere))
+            {
+                return false;
+            }
+            atmosphere.set_exposure(settings.atmosphere.exposure);
+            pending_parameters = settings.atmosphere;
+            atmosphere.set_render_method(settings.method);
+
+            if (!render.add_pass(
+                std::make_unique<atmosphere_sky_pass>(atmosphere)) ||
+                !render.initialize())
+            {
+                return false;
+            }
+
+            render.resize(desktop_width, desktop_height);
             return true;
         }
 
@@ -617,12 +652,13 @@ namespace desktopworld
             {
                 desktop_render_target.Reset();
                 if (SUCCEEDED(desktop_swap_chain->ResizeBuffers(
-                    0, width, height, DXGI_FORMAT_UNKNOWN, 0)))
-                {
-                    create_render_target_view(
+                    0, width, height, DXGI_FORMAT_UNKNOWN, 0)) &&
+                    SUCCEEDED(create_render_target_view(
                         device.Get(),
                         desktop_swap_chain.Get(),
-                        desktop_render_target.GetAddressOf());
+                        desktop_render_target.GetAddressOf())))
+                {
+                    render.resize(width, height);
                 }
                 frames.request_frame();
             }
@@ -670,24 +706,25 @@ namespace desktopworld
         {
             const std::int64_t current_epoch =
                 system_time_to_unix_seconds(current_time);
-            const std::int64_t interval =
-                sample_interval_override_seconds > 0
-                ? sample_interval_override_seconds
-                : get_sample_interval_seconds(current_sun.elevation_degrees);
-            const std::int64_t sample_start =
-                (current_epoch / interval) * interval;
+            const std::int64_t interval = calculate_sample_interval_seconds(
+                current_sun.elevation_degrees,
+                sample_interval_override_seconds);
+            const time_sample_window sample_window =
+                calculate_time_sample_window(current_epoch, interval);
 
             const bool sample_pair_changed =
-                sample_start != sample_start_time || interval != sample_interval;
+                sample_window.start_utc_seconds != sample_start_time ||
+                sample_window.interval_seconds != sample_interval;
 
             if (sample_pair_changed || environment_dirty)
             {
-                sample_start_time = sample_start;
-                sample_interval = interval;
+                sample_start_time = sample_window.start_utc_seconds;
+                sample_interval = sample_window.interval_seconds;
 
-                const SYSTEMTIME time_a = unix_seconds_to_system_time(sample_start_time);
+                const SYSTEMTIME time_a =
+                    unix_seconds_to_system_time(sample_window.start_utc_seconds);
                 const SYSTEMTIME time_b =
-                    unix_seconds_to_system_time(sample_start_time + sample_interval);
+                    unix_seconds_to_system_time(sample_window.end_utc_seconds);
 
                 sample_sun_a = solar_model::calculate(time_a, latitude, longitude);
                 sample_sun_b = solar_model::calculate(time_b, latitude, longitude);
@@ -696,16 +733,13 @@ namespace desktopworld
                     sample_sun_a,
                     sample_sun_b,
                     current_sun,
-                    calculate_blend_factor(current_epoch, sample_start_time, sample_interval));
+                    sample_window.blend_factor);
                 current_sky_generated =
                     atmosphere.get_render_method() == render_method::sky_current;
                 environment_dirty = false;
             }
 
-            blend_factor = calculate_blend_factor(
-                current_epoch,
-                sample_start_time,
-                sample_interval);
+            blend_factor = sample_window.blend_factor;
         }
 
         void render_desktop()
@@ -726,12 +760,20 @@ namespace desktopworld
                 atmosphere.update_current_sky(current_sun);
             }
 
-            atmosphere.draw(
-                desktop_render_target.Get(),
-                desktop_width,
-                desktop_height,
-                current_sun,
-                blend_factor);
+            render_context frame_context{};
+            frame_context.device = device.Get();
+            frame_context.immediate_context = context.Get();
+            frame_context.render_target = desktop_render_target.Get();
+            frame_context.width = desktop_width;
+            frame_context.height = desktop_height;
+            frame_context.current_sun = current_sun;
+            frame_context.blend_factor = blend_factor;
+
+            if (!render.execute(frame_context))
+            {
+                OutputDebugStringW(
+                    L"DesktopWorld: a RenderPass failed to execute.\n");
+            }
 
             desktop_swap_chain->Present(0, 0);
             current_sky_generated = false;
@@ -751,7 +793,14 @@ namespace desktopworld
             }
 
             frames.set_adaptive_fps(base_fps, twilight_fps);
+            frames.set_fixed_fps(fixed_fps);
             frames.set_mode(selected_frame_mode);
+
+            settings.method = selected_method;
+            settings.frame_update_mode = selected_frame_mode;
+            settings.base_fps = base_fps;
+            settings.fixed_fps = fixed_fps;
+            settings.twilight_fps = twilight_fps;
         }
 
         void draw_debug_gui()
@@ -787,6 +836,7 @@ namespace desktopworld
                         selected_frame_mode =
                             static_cast<frame_mode>(frame_mode_index);
                         frames.set_mode(selected_frame_mode);
+                        settings.frame_update_mode = selected_frame_mode;
                     }
 
                     bool adaptive_fps_changed = false;
@@ -797,12 +847,15 @@ namespace desktopworld
                     if (adaptive_fps_changed)
                     {
                         frames.set_adaptive_fps(base_fps, twilight_fps);
+                        settings.base_fps = base_fps;
+                        settings.twilight_fps = twilight_fps;
                     }
 
                     if (ImGui::SliderFloat(
                         "Fixed FPS", &fixed_fps, 1.0f, 30.0f))
                     {
                         frames.set_fixed_fps(fixed_fps);
+                        settings.fixed_fps = fixed_fps;
                     }
 
                     ImGui::Text("Target FPS: %.2f", frames.target_fps());
@@ -931,12 +984,14 @@ namespace desktopworld
                     if (ImGui::InputDouble("Latitude", &latitude, 0.01, 0.1, "%.5f"))
                     {
                         latitude = std::clamp(latitude, -90.0, 90.0);
+                        settings.latitude = latitude;
                         environment_dirty = true;
                         frames.request_frame();
                     }
                     if (ImGui::InputDouble("Longitude", &longitude, 0.01, 0.1, "%.5f"))
                     {
                         longitude = std::clamp(longitude, -180.0, 180.0);
+                        settings.longitude = longitude;
                         environment_dirty = true;
                         frames.request_frame();
                     }
@@ -996,6 +1051,7 @@ namespace desktopworld
                     {
                         atmosphere.set_atmosphere_parameters(pending_parameters);
                         atmosphere.set_exposure(pending_parameters.exposure);
+                        settings.atmosphere = pending_parameters;
                         environment_dirty = true;
                         frames.request_frame();
                     }
@@ -1014,6 +1070,7 @@ namespace desktopworld
                     if (ImGui::Button("Apply Exposure"))
                     {
                         atmosphere.set_exposure(pending_parameters.exposure);
+                        settings.atmosphere.exposure = pending_parameters.exposure;
                         frames.request_frame();
                     }
                     ImGui::TextWrapped(
@@ -1077,6 +1134,8 @@ namespace desktopworld
                     {
                         constexpr int interval_values[] = { 0, 3600, 1800, 900 };
                         sample_interval_override_seconds = interval_values[interval_index];
+                        settings.sample_interval_override_seconds =
+                            sample_interval_override_seconds;
                         environment_dirty = true;
                         frames.request_frame();
                     }
@@ -1096,7 +1155,8 @@ namespace desktopworld
                 {
                     ImGui::Text("Target FPS: %.2f", frames.target_fps());
                     ImGui::Text("Measured FPS: %.2f", stats.current_fps);
-                    ImGui::Text("CPU frame submit: %.3f ms", stats.cpu_frame_ms);
+                    ImGui::Text("CPU update: %.3f ms", stats.cpu_update_ms);
+                    ImGui::Text("CPU render submit: %.3f ms", stats.cpu_frame_ms);
                     ImGui::Text("GPU frame: %.3f ms", stats.gpu_frame_ms);
                     ImGui::Separator();
                     ImGui::Text("GPU base LUT: %.3f ms", stats.gpu_precompute_ms);
@@ -1204,8 +1264,15 @@ namespace desktopworld
                 }
 #endif
 
+                const std::chrono::steady_clock::time_point update_start =
+                    std::chrono::steady_clock::now();
                 update_solar_state();
                 update_environment();
+                const std::chrono::steady_clock::time_point update_end =
+                    std::chrono::steady_clock::now();
+                stats.cpu_update_ms = static_cast<float>(
+                    std::chrono::duration<double, std::milli>(
+                        update_end - update_start).count());
 
                 const std::chrono::steady_clock::time_point now =
                     std::chrono::steady_clock::now();
@@ -1259,6 +1326,8 @@ namespace desktopworld
                 UnregisterHotKey(desktop_window, 1);
             }
 #endif
+            save_settings();
+            render.shutdown();
             atmosphere.shutdown();
             debug_render_target.Reset();
             desktop_render_target.Reset();
@@ -1288,7 +1357,8 @@ namespace desktopworld
         implementation app{};
         app.instance = instance;
 
-        if (!app.register_window_classes() ||
+        if (!app.load_settings() ||
+            !app.register_window_classes() ||
             !app.create_windows(show_command) ||
             !app.create_device_and_swap_chains())
         {
