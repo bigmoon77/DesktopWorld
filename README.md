@@ -9,18 +9,20 @@ Windows desktop background renderer using Win32 and Direct3D 11.
 - UTC solar position calculation from latitude and longitude.
 - An Environment controller that caches the adjacent solar sample pair and updates it only when the sample window or observer location changes.
 - Persistent settings at `%APPDATA%/DesktopWorld/settings.ini`.
-- Transmittance LUT generation.
-- Numerical Rayleigh/Mie single-scattering evaluation.
-- Four selectable render paths: A (direct per-pixel scattering), B (current-time Sky View LUT), C (pixel-shader blend), and D (compute-shader blend).
+- Static atmosphere LUTs: Transmittance, Direct Irradiance, Single Rayleigh, Single Mie, Scattering Density, Multiple Scattering, and Indirect Irradiance.
+- RGB Rayleigh/Mie atmospheric model with Mie extinction, triangular ozone absorption profile, diffuse ground albedo, and configurable scattering order (2-4).
+- Static LUT disk cache at `%LOCALAPPDATA%/DesktopWorld/Cache`, keyed by physical parameters, LUT dimensions, format and algorithm version.
+- Two adjacent time samples for the dynamic Sky View LUT.
+- Four selectable render paths: A (direct per-pixel lookup of the 3D scattering LUT), B (current-time Sky View LUT), C (pixel-shader temporal blend), and D (compute-shader temporal blend).
 - A serial RenderSystem / RenderPass contract with AtmosphereSkyPass as the initial pass.
 - Adaptive, fixed-FPS, and on-demand frame modes.
 - Render Once, Update Environment, and Update Environment + Render Once debug actions.
 - Debug-only Dear ImGui window in Debug builds; Ctrl+Shift+D toggles it.
-- Fixed UTC time, latitude/longitude, render method, sample interval, FPS, atmosphere parameters, and exposure controls.
-- Asynchronous D3D11 timestamp profiling for precompute, Sky View generation, blending, and rendering.
+- Fixed UTC time, latitude/longitude, render method, sample interval, FPS, Rayleigh/Mie/ozone/ground settings, scattering order, and exposure controls.
+- Asynchronous D3D11 timestamp profiling for static precompute stages, Sky View generation, blending, and rendering.
 - CPU environment-update and render-submission timings.
 - Core unit tests for solar position, sample scheduling (including pre-1970 timestamps), environment sample caching, settings round-trip, frame scheduling, and RenderPass ordering.
-- HLSL entry-point compilation validation as part of the Windows build.
+- HLSL entry-point compilation validation as part of the Windows build (15 entry points).
 
 ## Build
 
@@ -42,14 +44,22 @@ The Debug configuration includes the ImGui control window. Release omits the deb
 
 ## Settings
 
-On first launch the application creates `%APPDATA%/DesktopWorld/settings.ini`. It stores observer latitude/longitude, render method, frame mode and FPS, sample interval override, exposure, and current single-scattering parameters. The file can be edited directly in Release builds.
+On first launch the application creates `%APPDATA%/DesktopWorld/settings.ini`. It stores observer latitude/longitude, render method, frame mode and FPS, sample interval override, exposure, and physical atmosphere parameters. The file can be edited directly in Release builds.
 
-## Current limitations
+Static LUT cache files are placed under `%LOCALAPPDATA%/DesktopWorld/Cache`. Cache headers validate the algorithm version, format, dimensions, and physical parameter hash before reuse.
 
-This is the initial implementation phase, not the final atmospheric model.
+## Atmosphere model status
 
-The current atmosphere integrator uses a transmittance LUT and numerical Rayleigh/Mie **single scattering**. Multiple scattering, ground reflection, ozone absorption, and the complete Bruneton precomputation pipeline are not implemented yet.
+The current GPU implementation is an RGB, reduced-resolution, reduced-angular-sample multi-scattering prototype inspired by the staged precomputation structure in Bruneton's reference model. It includes Rayleigh and Mie single scattering, iterative higher-order scattering, a triangular ozone density profile, and diffuse ground reflection in the scattering-density calculation.
 
-The desktop host currently targets the primary monitor. Explorer-restart recovery, full multi-monitor support, and runtime visual validation on the user's desktop remain future work.
+The current precomputation uses a 4 x 8 angular quadrature, 24 ray steps for scattering integration, and 48 steps for transmittance. The 3D packed scattering LUT is 256 x 128 x 32, with 64 x 16 irradiance. These are performance-oriented starting values, not reference-quality settings.
 
-Static atmosphere LUT disk caching, GPU memory reporting, image capture, quantitative B-vs-D radiance error visualization, and reference-image validation remain future work.
+The pipeline compiles and passes core unit tests, but GPU visual output, physical accuracy against Bruneton reference images, B-vs-D linear-radiance error, and first-run precomputation time have not yet been measured. Do not treat the current result as a physically validated production atmosphere model.
+
+## Remaining work
+
+- Quantitative reference-image comparison and B-vs-D MAE / RMSE / maximum error.
+- Tune angular quadrature, ray integration steps, LUT resolutions, and scattering order against image error and GPU time.
+- Validate cache cold/warm startup and corrupted-cache recovery on real D3D11 devices.
+- Explorer-restart recovery and full multi-monitor support.
+- GPU memory reporting, image capture, and runtime visual validation on the target desktop.
