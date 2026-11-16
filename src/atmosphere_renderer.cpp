@@ -70,10 +70,10 @@ namespace desktopworld
             const std::uint32_t format =
                 static_cast<std::uint32_t>(lut_format);
             hash = update_hash(hash, &format, sizeof(format));
-            hash = update_hash(hash, &irradiance_width, sizeof(irradiance_width));
-            hash = update_hash(hash, &irradiance_height, sizeof(irradiance_height));
-            hash = update_hash(hash, &scattering_height, sizeof(scattering_height));
-            hash = update_hash(hash, &scattering_depth, sizeof(scattering_depth));
+            hash = update_hash(hash, &atmosphere_renderer::irradiance_width, sizeof(atmosphere_renderer::irradiance_width));
+            hash = update_hash(hash, &atmosphere_renderer::irradiance_height, sizeof(atmosphere_renderer::irradiance_height));
+            hash = update_hash(hash, &atmosphere_renderer::scattering_height, sizeof(atmosphere_renderer::scattering_height));
+            hash = update_hash(hash, &atmosphere_renderer::scattering_depth, sizeof(atmosphere_renderer::scattering_depth));
 
             constexpr std::uint32_t algorithm_version = 3;
             hash = update_hash(hash, &algorithm_version, sizeof(algorithm_version));
