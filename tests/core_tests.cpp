@@ -4,6 +4,9 @@
 
 #include <Windows.h>
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -113,6 +116,10 @@ namespace
         assert(boundary.start_utc_seconds == 3600);
         assert(boundary.end_utc_seconds == 7200);
         assert(nearly_equal(boundary.blend_factor, 0.0, 1.0e-6));
+
+        assert(desktopworld::floor_divide(-3601, 3600) == -2);
+        assert(desktopworld::floor_divide(-3600, 3600) == -1);
+        assert(desktopworld::floor_divide(-3599, 3600) == -1);
 
         const desktopworld::time_sample_window before_epoch =
             calculate_time_sample_window(-1, 3600);
