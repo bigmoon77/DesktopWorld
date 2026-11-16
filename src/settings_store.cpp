@@ -12,6 +12,7 @@
 #include <locale>
 #include <sstream>
 #include <string>
+#include <utility>
 
 namespace desktopworld
 {
@@ -40,6 +41,11 @@ namespace desktopworld
             }
             return 0;
         }
+    }
+
+    settings_store::settings_store(std::filesystem::path path)
+        : _path(std::move(path))
+    {
     }
 
     bool settings_store::load(app_settings& settings)
