@@ -1,6 +1,6 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.5
+- 文書バージョン: 1.6
 - 対応要件: docs/requirements.md v1.2
 - 状態: 単一仮想デスクトップ描画方式、HDR品質計測、Bruneton CPU比較仕様の反映版
 - 対象 API: Win32 / Direct3D 11
