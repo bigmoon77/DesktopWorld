@@ -77,10 +77,11 @@ The comparator is optional and is not part of the default application build. It 
 ~~~powershell
 cmake -S . -B out/reference -A x64 -DDESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON
 cmake --build out/reference --config Release --target bruneton_reference_compare
+.\out\reference\Release\bruneton_reference_compare.exe --self-test
 .\out\reference\Release\bruneton_reference_compare.exe "C:\path\sky_capture.pfm"
 ~~~
 
-Capture a PFM with render method **A (Direct)** or **B (Sky Current)**. The adjacent `.meta` file is required; captures from **C/D** are rejected because they contain temporal interpolation. The tool writes `<stem>_bruneton_reference.pfm` and `<stem>_bruneton_metrics.txt`. The first run computes and caches the CPU reference LUTs and may take several minutes. See `docs/detailed_design.md` section 9.4 and `THIRD_PARTY_NOTICES.md` for comparison assumptions and upstream licenses.
+Run `bruneton_reference_compare.exe --self-test` to verify PFM orientation / round-trip and HDR error metrics. Then capture a PFM with render method **A (Direct)** or **B (Sky Current)**. The adjacent `.meta` file is required; captures from **C/D** are rejected because they contain temporal interpolation. The tool writes `<stem>_bruneton_reference.pfm` and `<stem>_bruneton_metrics.txt`. The first run computes and caches the CPU reference LUTs and may take several minutes. See `docs/detailed_design.md` section 9.4 and `THIRD_PARTY_NOTICES.md` for comparison assumptions and upstream licenses.
 
 ## Remaining work
 
