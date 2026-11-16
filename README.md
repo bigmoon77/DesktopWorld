@@ -46,6 +46,16 @@ ctest --test-dir out/build -C Debug --output-on-failure
 
 The Debug configuration includes the ImGui control window. Release omits the debug UI.
 
+## Debug diagnostics
+
+Open the debug window with **Ctrl+Shift+D**, then use the **Render** tab:
+
+- **Measure HDR Errors** runs the B-vs-D and A-vs-D comparisons and displays RGB MAE, RMSE, and maximum absolute error.
+- **Capture Linear HDR Sky** writes the current 256 x 128 Sky View radiance as a PFM file under `%LOCALAPPDATA%/DesktopWorld/Captures/`.
+- The **Performance** tab shows DXGI process-level Local / Non-local memory usage and the corresponding OS budget.
+
+HDR readback is synchronous and can briefly stall rendering. Diagnostics run only when explicitly requested. DXGI memory values cover the process on the selected adapter, not just DesktopWorld's atmosphere textures. The diagnostic UI is available in Debug builds.
+
 ## Settings
 
 On first launch the application creates `%APPDATA%/DesktopWorld/settings.ini`. It stores observer latitude/longitude, render method, frame mode and FPS, sample interval override, exposure, and physical atmosphere parameters. The file can be edited directly in Release builds.
