@@ -190,6 +190,7 @@ namespace desktopworld
         HWND worker_window = nullptr;
         bool running = true;
         bool environment_dirty = true;
+        bool current_sky_generated = false;
         bool fixed_time_enabled = false;
         bool debug_window_visible = true;
 
@@ -693,6 +694,8 @@ namespace desktopworld
                     sample_sun_b,
                     current_sun,
                     calculate_blend_factor(current_epoch, sample_start_time, sample_interval));
+                current_sky_generated =
+                    atmosphere.get_render_method() == render_method::sky_current;
                 environment_dirty = false;
             }
 
@@ -714,7 +717,12 @@ namespace desktopworld
                 desktop_render_target.Get(),
                 clear_color);
 
-            atmosphere.update_current_sky(current_sun);
+            if (atmosphere.get_render_method() == render_method::sky_current &&
+                !current_sky_generated)
+            {
+                atmosphere.update_current_sky(current_sun);
+            }
+
             atmosphere.draw(
                 desktop_render_target.Get(),
                 desktop_width,
@@ -723,6 +731,7 @@ namespace desktopworld
                 blend_factor);
 
             desktop_swap_chain->Present(0, 0);
+            current_sky_generated = false;
         }
 
 #ifdef DW_ENABLE_DEBUG_UI
@@ -1137,7 +1146,6 @@ namespace desktopworld
                 }
 
                 update_solar_state();
-                update_environment();
 
 #ifdef DW_ENABLE_DEBUG_UI
                 const std::chrono::steady_clock::time_point now =
