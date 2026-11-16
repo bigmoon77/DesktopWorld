@@ -292,8 +292,12 @@ namespace desktopworld
             return false;
         }
 
-        WritePrivateProfileStringW(
-            nullptr, nullptr, nullptr, temporary_path.c_str());
+        if (!WritePrivateProfileStringW(
+            nullptr, nullptr, nullptr, temporary_path.c_str()))
+        {
+            DeleteFileW(temporary_path.c_str());
+            return false;
+        }
 
         if (!MoveFileExW(
             temporary_path.c_str(),
@@ -415,23 +419,4 @@ namespace desktopworld
         return static_cast<int>(parsed);
     }
 
-    bool settings_store::write_string(
-        const wchar_t* section,
-        const wchar_t* key,
-        const std::wstring& value) const
-    {
-        return WritePrivateProfileStringW(
-            section,
-            key,
-            value.c_str(),
-            _path.c_str()) != FALSE;
-    }
-
-    std::wstring settings_store::format_double(const double value)
-    {
-        std::wostringstream stream;
-        stream.imbue(std::locale::classic());
-        stream << std::setprecision(10) << value;
-        return stream.str();
-    }
 }
