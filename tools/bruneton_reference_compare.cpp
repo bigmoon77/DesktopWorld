@@ -644,6 +644,30 @@ namespace
         file << "ScatteringOrders=" << metadata.max_scattering_order << "\n";
         file << "Resolution=" << expected_width << "x" << expected_height << "\n";
         file << "WavelengthChannelsNm=680,550,440\n";
+        file << "ReferenceSourceCommit=34f14e745cff948f4ca3157d1b62a445ffa7286f\n";
+        file << "RgbCoefficientInterpolation=piecewise_linear\n";
+        file << "SolarSpectrumAssumption=constant_scalar_solar_intensity\n";
+        file << "CoefficientUnitConversion=per_km_to_per_m_x_0.001\n";
+        file << "SunDirection=" << metadata.sun_direction_x << ","
+             << metadata.sun_direction_y << "," << metadata.sun_direction_z << "\n";
+        file << "PlanetRadiusKm=" << metadata.planet_radius_km << "\n";
+        file << "AtmosphereHeightKm=" << metadata.atmosphere_height_km << "\n";
+        file << "RayleighScatteringRGB=" << metadata.rayleigh_scattering[0] << ","
+             << metadata.rayleigh_scattering[1] << "," << metadata.rayleigh_scattering[2] << "\n";
+        file << "RayleighScaleHeightKm=" << metadata.rayleigh_scale_height_km << "\n";
+        file << "MieScatteringRGB=" << metadata.mie_scattering[0] << ","
+             << metadata.mie_scattering[1] << "," << metadata.mie_scattering[2] << "\n";
+        file << "MieExtinctionRGB=" << metadata.mie_extinction[0] << ","
+             << metadata.mie_extinction[1] << "," << metadata.mie_extinction[2] << "\n";
+        file << "MieScaleHeightKm=" << metadata.mie_scale_height_km << "\n";
+        file << "MiePhaseFunctionG=" << metadata.mie_phase_function_g << "\n";
+        file << "OzoneAbsorptionRGB=" << metadata.ozone_absorption[0] << ","
+             << metadata.ozone_absorption[1] << "," << metadata.ozone_absorption[2] << "\n";
+        file << "OzoneCenterHeightKm=" << metadata.ozone_center_height_km << "\n";
+        file << "OzoneHalfWidthKm=" << metadata.ozone_half_width_km << "\n";
+        file << "GroundAlbedoRGB=" << metadata.ground_albedo[0] << ","
+             << metadata.ground_albedo[1] << "," << metadata.ground_albedo[2] << "\n";
+        file << "SolarIntensity=" << metadata.solar_intensity << "\n";
         file << "PixelCount=" << metrics.pixel_count << "\n";
         file << "RGBComponentMAE=" << metrics.combined.mean_absolute_error << "\n";
         file << "RGBComponentRMSE=" << metrics.combined.root_mean_squared_error << "\n";
