@@ -617,6 +617,21 @@ namespace desktopworld
             0.0f,
             1000.0f);
 
+        const auto clamp_rgb = [](DirectX::XMFLOAT3& value,
+            const float minimum,
+            const float maximum)
+        {
+            value.x = clamp_float(value.x, minimum, maximum);
+            value.y = clamp_float(value.y, minimum, maximum);
+            value.z = clamp_float(value.z, minimum, maximum);
+        };
+
+        clamp_rgb(validated.rayleigh_scattering, 0.0f, 0.1f);
+        clamp_rgb(validated.mie_scattering, 0.0f, 0.1f);
+        clamp_rgb(validated.mie_extinction, 0.0f, 0.1f);
+        clamp_rgb(validated.ozone_absorption, 0.0f, 0.1f);
+        clamp_rgb(validated.ground_albedo, 0.0f, 1.0f);
+
         const std::uint64_t parameter_hash =
             calculate_parameter_hash(validated);
         _parameters = validated;
