@@ -43,6 +43,7 @@ add_executable(desktopworld WIN32
     src/solar_model.cpp
     src/frame_controller.cpp
     src/time_sample_scheduler.cpp
+    src/environment_controller.cpp
     src/settings_store.cpp
     src/render_system.cpp
     src/atmosphere_sky_pass.cpp
@@ -96,6 +97,7 @@ add_executable(desktopworld_core_tests
     src/solar_model.cpp
     src/frame_controller.cpp
     src/time_sample_scheduler.cpp
+    src/environment_controller.cpp
 )
 target_include_directories(desktopworld_core_tests PRIVATE include)
 target_compile_definitions(desktopworld_core_tests PRIVATE
