@@ -1,6 +1,6 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.3
+- 文書バージョン: 1.4
 - 対応要件: docs/requirements.md v1.2
 - 状態: 単一仮想デスクトップ描画方式およびHDR品質計測仕様の反映版
 - 対象 API: Win32 / Direct3D 11
@@ -378,6 +378,18 @@ MAE / RMSE / Maximum Absolute Error は RGB の各スカラー成分を対象と
 readback は同期的であり、計測・キャプチャ中は一時的に CPU / GPU が待機する。この処理は明示的な Debug 操作に限定する。
 
 この測定で得られるのは同一モデル内の描画経路・時間補間誤差である。大気モデル自体の物理精度は別途 Bruneton 参照実装との同条件比較で評価する。
+
+### 9.3 GPUメモリ監視
+
+Debug UI では DXGI 1.4 の `IDXGIAdapter3::QueryVideoMemoryInfo` を使用し、選択中の D3D11 アダプターについてプロセス単位のメモリ情報を約 1 秒間隔で取得する。
+
+- Local segment: 現在のプロセス使用量と OS のメモリ予算。
+- Non-local segment: 現在のプロセス使用量と OS のメモリ予算。
+- 表示単位は MiB (1024 x 1024 bytes)。
+- API / ドライバーが取得に対応しない segment は unavailable と表示する。
+- 情報取得は Debug UI のみで行い、描画処理やリソース生成を待たせない。
+
+この値はプロセス内の全 D3D / DXGI リソースを含むプロセス全体の使用量であり、DesktopWorld の大気 LUT だけのサイズではない。OS の Budget は動的に変化する上限目安であり、物理 VRAM 容量と同一視しない。
 
 ## 10. エラー処理
 
