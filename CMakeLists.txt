@@ -42,6 +42,10 @@ add_executable(desktopworld WIN32
     src/main.cpp
     src/solar_model.cpp
     src/frame_controller.cpp
+    src/time_sample_scheduler.cpp
+    src/settings_store.cpp
+    src/render_system.cpp
+    src/atmosphere_sky_pass.cpp
     src/atmosphere_renderer.cpp
     src/gpu_profiler.cpp
     src/desktop_app.cpp
@@ -84,6 +88,32 @@ add_custom_command(TARGET desktopworld POST_BUILD
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders
         $<TARGET_FILE_DIR:desktopworld>/shaders
 )
+
+enable_testing()
+
+add_executable(desktopworld_core_tests
+    tests/core_tests.cpp
+    src/solar_model.cpp
+    src/frame_controller.cpp
+    src/time_sample_scheduler.cpp
+)
+target_include_directories(desktopworld_core_tests PRIVATE include)
+target_compile_definitions(desktopworld_core_tests PRIVATE
+    UNICODE
+    _UNICODE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+    WINVER=0x0A00
+    _WIN32_WINNT=0x0A00
+)
+target_compile_options(desktopworld_core_tests PRIVATE
+    /W4
+    /permissive-
+    /EHsc
+    /utf-8
+    /Zc:__cplusplus
+)
+add_test(NAME desktopworld_core_tests COMMAND desktopworld_core_tests)
 
 add_executable(shader_validation tools/shader_validation.cpp)
 target_compile_features(shader_validation PRIVATE cxx_std_20)
