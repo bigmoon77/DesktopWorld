@@ -1,8 +1,8 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象: 現行 feature/initial-implementation
-- 基準文書: docs/requirements.md v1.0 / docs/detailed_design.md v1.0
-- 結果: **設計上の矛盾を解消。実装は P0 / P1 の未完了項目あり**
+- 基準文書: docs/requirements.md v1.1 / docs/detailed_design.md v1.1
+- 結果: **設計文書の矛盾を解消。P0実装をCIで検証。P1は実装プロトタイプまで。**
 - 注意: Debug / Release のビルド成功は、要件充足・実機描画・物理精度の保証ではない。
 
 ## 1. リポジトリ確認
@@ -18,31 +18,31 @@
 | R-03 | 時刻 | 内部 UTC / Debug UI も UTC | 内部 UTC を正式仕様とする。ローカル時計の瞬間を UTC として取得する | 解消 |
 | R-04 | 時間サンプル | 60 / 30 / 15 分の自動切替 | 通常 60 分、薄明で 30 / 15 分に短縮と明文化 | 解消 |
 | R-05 | キャッシュ | Sky View 2 枚のみ保持 | 2-slot rolling cache と Static LUT cache を別物として定義 | 解消 |
-| R-06 | 大気モデル | Rayleigh / Mie 単一散乱 | 最終要件は多重散乱・地面反射・オゾン吸収を含む Bruneton 系事前計算 | P1 |
+| R-06 | 大気モデル | RGB近似の複数散乱を追加。参照精度は未検証 | Bruneton系の計算順序・Static LUT分離を実装。高精度な参照検証は残る | P1 |
 | R-07 | 描画拡張 | desktop_app と atmosphere_renderer に処理が集中 | RenderSystem / RenderPass を追加し責務分離 | P0 |
 | R-08 | WorkerW | 取得失敗時に Progman へ fallback | アイコン背面を保証できない可能性があるため、安全に失敗する仕様へ変更 | P0 |
 | R-09 | Explorer 再起動 | 再取得処理なし。再検査 timer も未使用 | TaskbarCreated と HWND 検査で再構築 | P2 |
 | R-10 | モニター | プライマリのみ | monitor_manager とモニターごとの SwapChain を追加 | P2 |
-| R-11 | 品質検証 | HLSL compile のみ | 太陽位置・サンプル計算・B vs D 補間誤差の自動検証を追加 | P0 |
-| R-12 | GPU 計測 | Timestamp Query 実装済み | GPU frame total に加え CPU update / submit を分離。Query は非同期回収 | P0 |
+| R-11 | 品質検証 | 太陽位置・サンプル・設定・Pass順の単体テストとHLSL compileを実施。B vs D誤差は未実装 | GPU画像比較とB/D誤差を追加 | P1 |
+| R-12 | GPU 計測 | Timestamp QueryでStatic LUT全体と各大気計算段階を計測。CPU update / submitも分離 | 計測値を実GPU実行で確認 | P1 |
 | R-13 | 過去日時 | epoch / interval の整数除算が負数で 0 方向丸め | floor_div を採用する | P0 |
 
 ## 3. 現行実装の方式と意味を明確化
 
 ### 3.1 A / B / C / D
 
-- A は各出力ピクセルで単一散乱を直接積分する。
+- A は各出力ピクセルで3D scattering LUTからradianceを直接評価する。
 - B は現在時刻の太陽方向から Sky View LUT を生成する。
 - C はサンプル時刻 A/B の Sky View を Pixel Shader で補間する。
 - D はサンプル時刻 A/B の Sky View を Compute Shader で補間し、その結果を描画する。
 
-A/B/C/D は現状同じ単一散乱物理モデルを使う。したがって A と D の差は、現在のモデルにおける LUT 解像度・時間補間の差であり、現実の大気に対する物理精度の差ではない。
+A/B/C/D は同じRGB大気モデルとStatic LUTを共有する。現在の大気モデルはRayleigh / Mieの単一散乱に加えて、複数散乱の次数反復、三角形オゾン密度、拡散地面反射を含む低解像度プロトタイプである。Aは3D scattering LUTを直接参照し、Bは現在時刻Sky View LUTを生成、C/Dは時間サンプルを補間する。AとDの差はStatic LUT・Sky View LUT・時間補間の近似誤差を含み、現実の大気に対する物理精度の差を示すものではない。
 
 B は比較基準として毎回現在時刻 LUT を生成するため、通常運用の既定方式にはしない。D を既定方式とする。
 
 ### 3.2 Static LUT と Sky View LUT
 
-現行コードには Transmittance LUT と Sky View LUT があるが、Bruneton 系の複数散乱事前計算は存在しない。
+現行コードには Transmittance / Direct Irradiance / Single Rayleigh / Single Mie / Scattering Density / Multiple Scattering / Indirect Irradiance / Sky View LUTがある。Bruneton系の段階的な計算順序を参考にしたRGB近似であり、参照実装のスペクトル表現・積分解像度・全精度をそのまま再現したものではない。
 
 Static LUT は大気パラメータに依存する。太陽時刻が変わるだけで再生成してはいけない。
 
@@ -50,23 +50,23 @@ Sky View LUT は太陽方向に依存する。現在時刻を挟む 2 枚を保�
 
 ## 4. 実装で確認された具体的な修正項目
 
-### P0: 次に必ず修正
+### P0: CI検証済み
 
-1. settings_store を追加し、緯度・経度・描画方式・FPS・間隔・大気値・露出を %APPDATA%/DesktopWorld/settings.ini から読み書きする。
-2. desktop_app.cpp の巨大な実装構造体から Win32 ホスト・時刻・設定・環境更新の責務を切り出す。
-3. render_system / render_pass / atmosphere_sky_pass を追加する。初期段階では直列 Pass 実行とし、汎用レンダーグラフは作らない。
-4. WorkerW 取得失敗時の Progman fallback を削除し、誤った場所への描画を避ける。
-5. サンプル時刻計算に負数対応 floor_div を導入する。
-6. 太陽位置とサンプルスケジュールの Unit Test を追加する。
-7. CPU update と CPU render submit の計測値を実際に収集する。未使用の cpu_update_ms を放置しない。
+1. settings_storeを追加し、設定保存・再読み込みと範囲検証を実装した。
+2. EnvironmentController / TimeProvider / WorkerWHostを分離した。
+3. 直列RenderSystem / RenderPass / AtmosphereSkyPassを追加した。
+4. WorkerW取得失敗時にProgmanへ描画するfallbackを削除した。
+5. 負数UTCに対応するfloor_divとサンプルスケジュールのUnit Testを追加した。
+6. 太陽位置、サンプルキャッシュ、設定往復、FrameScheduler、RenderPass順をUnit Test化した。
+7. CPU update / render submit とGPU Timestampの計測を追加した。
 
-### P1: 大気散乱の完成
+### P1: 大気散乱の品質確立
 
-1. Transmittance / Single Scattering / Scattering Density / Indirect Irradiance / Multiple Scattering の順で事前計算する。
-2. Ground Albedo と Ozone Absorption をモデルに加える。
-3. 大気パラメータと LUT 形式の hash によるディスクキャッシュを追加する。
-4. B vs D の linear HDR 誤差を計測する。
-5. 4 次までの散乱と GPU 時間・画質の関係を計測する。
+1. Transmittance / Direct Irradiance / Single Scatteringを生成し、order 2..NについてScattering Density / Indirect Irradiance / Multiple Scatteringを反復するGPUパイプラインを追加した。
+2. Mie extinction、三角形オゾン密度、ground albedoを設定可能にした。
+3. parameter hash・version・format・dimensionsを含むStatic LUTディスクキャッシュを追加した。
+4. Precompute total / Transmittance / Direct Irradiance / Single Scattering / Multiple ScatteringのGPU Timestampを分離した。
+5. 参照画像との物理誤差、B/Dのlinear HDR誤差、低角度積分の妥当性は未検証であり、今後の品質確立タスクとする。
 
 ### P2: デスクトップホスト完成
 
@@ -90,9 +90,9 @@ Sky View LUT は太陽方向に依存する。現在時刻を挟む 2 枚を保�
 
 ### 実装との整合性
 
-現行実装は初期プロトタイプとしてビルドするが、P0 の設定保存・RenderPass 分離・WorkerW fallback 修正・自動テストが未完了である。
+P0の設計項目は実装され、Windows CIでDebug/ReleaseのビルドとコアUnit Test、15本のHLSLエントリーを検証した。P1のRGB複数散乱パイプラインとStatic LUT cacheも実装された。
 
-したがって、今回のレビューは「残りの実装へ進むための設計整合レビュー合格」を意味し、製品機能の完成判定ではない。
+ただし、GPU実機での画像評価、Bruneton参照画像との誤差計測、B/D時間補間誤差、実際の起動時間・GPUコストは未検証である。現段階のP1は「動く低解像度プロトタイプ」であり、物理精度を確立した完成版ではない。
 
 ## 6. 参照資料
 
