@@ -17,6 +17,14 @@ namespace desktopworld
     void frame_controller::set_mode(const frame_mode mode)
     {
         _mode = mode;
+        if (_mode == frame_mode::fixed)
+        {
+            _target_fps = _fixed_fps;
+        }
+        else if (_mode == frame_mode::adaptive)
+        {
+            set_solar_elevation(_solar_elevation);
+        }
         request_frame();
     }
 
