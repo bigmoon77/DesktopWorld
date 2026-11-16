@@ -1,8 +1,12 @@
 #include "desktopworld/atmosphere_renderer.h"
 
 #include <d3dcompiler.h>
+
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <string>
+#include <utility>
 
 namespace desktopworld
 {
@@ -12,12 +16,87 @@ namespace desktopworld
         constexpr unsigned int transmittance_height = 64;
         constexpr DXGI_FORMAT lut_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
-        template<typename T>
-        void set_float3(float (&destination)[3], const T& source)
+        void set_float3(float (&destination)[3], const DirectX::XMFLOAT3& source)
         {
             destination[0] = source.x;
             destination[1] = source.y;
             destination[2] = source.z;
+        }
+
+        std::uint64_t update_hash(
+            std::uint64_t hash,
+            const void* value,
+            const std::size_t byte_count)
+        {
+            constexpr std::uint64_t prime = 1099511628211ULL;
+            const unsigned char* bytes =
+                static_cast<const unsigned char*>(value);
+
+            for (std::size_t index = 0; index < byte_count; ++index)
+            {
+                hash ^= bytes[index];
+                hash *= prime;
+            }
+
+            return hash;
+        }
+
+        std::uint64_t calculate_parameter_hash(const atmosphere_parameters& parameters)
+        {
+            constexpr std::uint64_t offset_basis = 14695981039346656037ULL;
+            std::uint64_t hash = offset_basis;
+
+            hash = update_hash(hash, &parameters.planet_radius_km, sizeof(float));
+            hash = update_hash(hash, &parameters.atmosphere_height_km, sizeof(float));
+            hash = update_hash(hash, &parameters.rayleigh_scattering, sizeof(parameters.rayleigh_scattering));
+            hash = update_hash(hash, &parameters.rayleigh_scale_height_km, sizeof(float));
+            hash = update_hash(hash, &parameters.mie_scattering, sizeof(parameters.mie_scattering));
+            hash = update_hash(hash, &parameters.mie_extinction, sizeof(parameters.mie_extinction));
+            hash = update_hash(hash, &parameters.mie_scale_height_km, sizeof(float));
+            hash = update_hash(hash, &parameters.mie_g, sizeof(float));
+            hash = update_hash(hash, &parameters.ozone_absorption, sizeof(parameters.ozone_absorption));
+            hash = update_hash(hash, &parameters.ozone_center_height_km, sizeof(float));
+            hash = update_hash(hash, &parameters.ozone_half_width_km, sizeof(float));
+            hash = update_hash(hash, &parameters.ground_albedo, sizeof(parameters.ground_albedo));
+            hash = update_hash(hash, &parameters.solar_intensity, sizeof(float));
+            hash = update_hash(hash, &parameters.max_scattering_order, sizeof(std::uint32_t));
+
+            constexpr std::uint32_t algorithm_version = 2;
+            hash = update_hash(hash, &algorithm_version, sizeof(algorithm_version));
+            hash = update_hash(hash, &transmittance_width, sizeof(transmittance_width));
+            hash = update_hash(hash, &transmittance_height, sizeof(transmittance_height));
+            hash = update_hash(hash, &atmosphere_renderer::scattering_width,
+                sizeof(atmosphere_renderer::scattering_width));
+
+            return hash;
+        }
+
+        void swap_com_ptr(
+            Microsoft::WRL::ComPtr<ID3D11Texture2D>& a,
+            Microsoft::WRL::ComPtr<ID3D11Texture2D>& b)
+        {
+            a.Swap(b);
+        }
+
+        void swap_com_ptr(
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& a,
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& b)
+        {
+            a.Swap(b);
+        }
+
+        void swap_com_ptr(
+            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>& a,
+            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>& b)
+        {
+            a.Swap(b);
+        }
+
+        void swap_com_ptr(
+            Microsoft::WRL::ComPtr<ID3D11Texture3D>& a,
+            Microsoft::WRL::ComPtr<ID3D11Texture3D>& b)
+        {
+            a.Swap(b);
         }
     }
 
@@ -50,6 +129,7 @@ namespace desktopworld
     void atmosphere_renderer::shutdown()
     {
         _profiler.shutdown();
+
         if (_context)
         {
             _context->ClearState();
@@ -64,6 +144,42 @@ namespace desktopworld
         _sky_a_uav.Reset();
         _sky_a_srv.Reset();
         _sky_a_texture.Reset();
+
+        _irradiance_sum_b_uav.Reset();
+        _irradiance_sum_b_srv.Reset();
+        _irradiance_sum_b_texture.Reset();
+        _irradiance_sum_a_uav.Reset();
+        _irradiance_sum_a_srv.Reset();
+        _irradiance_sum_a_texture.Reset();
+        _next_irradiance_uav.Reset();
+        _next_irradiance_srv.Reset();
+        _next_irradiance_texture.Reset();
+        _delta_irradiance_uav.Reset();
+        _delta_irradiance_srv.Reset();
+        _delta_irradiance_texture.Reset();
+        _direct_irradiance_uav.Reset();
+        _direct_irradiance_srv.Reset();
+        _direct_irradiance_texture.Reset();
+
+        _delta_multiple_uav.Reset();
+        _delta_multiple_srv.Reset();
+        _delta_multiple_texture.Reset();
+        _scattering_density_uav.Reset();
+        _scattering_density_srv.Reset();
+        _scattering_density_texture.Reset();
+        _scattering_sum_b_uav.Reset();
+        _scattering_sum_b_srv.Reset();
+        _scattering_sum_b_texture.Reset();
+        _scattering_sum_a_uav.Reset();
+        _scattering_sum_a_srv.Reset();
+        _scattering_sum_a_texture.Reset();
+        _single_mie_uav.Reset();
+        _single_mie_srv.Reset();
+        _single_mie_texture.Reset();
+        _single_rayleigh_uav.Reset();
+        _single_rayleigh_srv.Reset();
+        _single_rayleigh_texture.Reset();
+
         _transmittance_uav.Reset();
         _transmittance_srv.Reset();
         _transmittance_texture.Reset();
@@ -75,6 +191,13 @@ namespace desktopworld
         _atmosphere_cb.Reset();
 
         _transmittance_cs.Reset();
+        _direct_irradiance_cs.Reset();
+        _single_scattering_cs.Reset();
+        _scattering_density_cs.Reset();
+        _multiple_scattering_cs.Reset();
+        _indirect_irradiance_cs.Reset();
+        _accumulate_scattering_cs.Reset();
+        _accumulate_irradiance_cs.Reset();
         _sky_view_cs.Reset();
         _blend_cs.Reset();
         _fullscreen_vs.Reset();
@@ -85,6 +208,8 @@ namespace desktopworld
 
         _context.Reset();
         _device.Reset();
+        _static_luts_valid = false;
+        _static_parameter_hash = 0;
         _initialized = false;
     }
 
@@ -97,22 +222,83 @@ namespace desktopworld
             return false;
         }
 
-        _parameters = parameters;
+        atmosphere_parameters validated = parameters;
+        validated.planet_radius_km = clamp_float(
+            validated.planet_radius_km,
+            1000.0f,
+            10000.0f);
+        validated.atmosphere_height_km = clamp_float(
+            validated.atmosphere_height_km,
+            1.0f,
+            500.0f);
+        validated.rayleigh_scale_height_km = clamp_float(
+            validated.rayleigh_scale_height_km,
+            0.1f,
+            100.0f);
+        validated.mie_scale_height_km = clamp_float(
+            validated.mie_scale_height_km,
+            0.1f,
+            50.0f);
+        validated.mie_g = clamp_float(validated.mie_g, -0.98f, 0.98f);
+        validated.ozone_center_height_km = clamp_float(
+            validated.ozone_center_height_km,
+            5.0f,
+            60.0f);
+        validated.ozone_half_width_km = clamp_float(
+            validated.ozone_half_width_km,
+            1.0f,
+            40.0f);
+        validated.max_scattering_order =
+            std::clamp<std::uint32_t>(validated.max_scattering_order, 2, 4);
+        validated.solar_intensity = clamp_float(
+            validated.solar_intensity,
+            0.0f,
+            1000.0f);
+
+        const std::uint64_t parameter_hash =
+            calculate_parameter_hash(validated);
+        _parameters = validated;
+
+        if (_static_luts_valid && parameter_hash == _static_parameter_hash)
+        {
+            return true;
+        }
 
         atmosphere_constants constants{};
-        set_float3(constants.rayleigh_scattering, parameters.rayleigh_scattering);
-        constants.planet_radius_km = parameters.planet_radius_km;
-        set_float3(constants.mie_scattering, parameters.mie_scattering);
-        constants.atmosphere_height_km = parameters.atmosphere_height_km;
-        constants.rayleigh_scale_height_km = parameters.rayleigh_scale_height_km;
-        constants.mie_scale_height_km = parameters.mie_scale_height_km;
-        constants.mie_g = parameters.mie_g;
-        constants.solar_intensity = parameters.solar_intensity;
+        set_float3(constants.rayleigh_scattering, validated.rayleigh_scattering);
+        constants.planet_radius_km = validated.planet_radius_km;
+        set_float3(constants.mie_scattering, validated.mie_scattering);
+        constants.atmosphere_height_km = validated.atmosphere_height_km;
+        set_float3(constants.mie_extinction, validated.mie_extinction);
+        constants.rayleigh_scale_height_km = validated.rayleigh_scale_height_km;
+        set_float3(constants.ozone_absorption, validated.ozone_absorption);
+        constants.mie_scale_height_km = validated.mie_scale_height_km;
+        set_float3(constants.ground_albedo, validated.ground_albedo);
+        constants.mie_g = validated.mie_g;
+        constants.solar_intensity = validated.solar_intensity;
+        constants.ozone_center_height_km = validated.ozone_center_height_km;
+        constants.ozone_half_width_km = validated.ozone_half_width_km;
+        constants.sun_angular_radius = 0.004675f;
+        constants.mu_s_min = -0.207912f;
+        constants.max_scattering_order = validated.max_scattering_order;
+        constants.angular_theta_samples = 4;
+        constants.angular_phi_samples = 8;
+        constants.reserved = 0;
 
-        _context->UpdateSubresource(_atmosphere_cb.Get(), 0, nullptr, &constants, 0, 0);
+        _context->UpdateSubresource(
+            _atmosphere_cb.Get(),
+            0,
+            nullptr,
+            &constants,
+            0,
+            0);
+
         _profiler.begin_scope(gpu_profile_scope::precompute);
-        generate_transmittance();
+        generate_static_luts();
         _profiler.end_scope(gpu_profile_scope::precompute);
+
+        _static_parameter_hash = parameter_hash;
+        _static_luts_valid = true;
         return true;
     }
 
@@ -123,7 +309,9 @@ namespace desktopworld
 
     void atmosphere_renderer::update_current_sky(const solar_state& current)
     {
-        if (_initialized && _render_method == render_method::sky_current)
+        if (_initialized &&
+            _static_luts_valid &&
+            _render_method == render_method::sky_current)
         {
             _profiler.begin_scope(gpu_profile_scope::sky_generation);
             generate_sky_view(_sky_current_uav.Get(), current);
@@ -139,7 +327,7 @@ namespace desktopworld
     {
         (void)blend_factor;
 
-        if (!_initialized)
+        if (!_initialized || !_static_luts_valid)
         {
             return;
         }
@@ -176,7 +364,8 @@ namespace desktopworld
         const solar_state& current_sun,
         const float blend_factor)
     {
-        if (!_initialized || target == nullptr || width == 0 || height == 0)
+        if (!_initialized || !_static_luts_valid ||
+            target == nullptr || width == 0 || height == 0)
         {
             return;
         }
@@ -203,21 +392,33 @@ namespace desktopworld
         _context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         _context->VSSetShader(_fullscreen_vs.Get(), nullptr, 0);
 
-        ID3D11Buffer* constant_buffers[] = { _frame_cb.Get(), _atmosphere_cb.Get() };
+        ID3D11Buffer* constant_buffers[] =
+        {
+            _frame_cb.Get(),
+            _atmosphere_cb.Get()
+        };
         _context->PSSetConstantBuffers(0, 2, constant_buffers);
+
         ID3D11SamplerState* linear_sampler = _linear_sampler.Get();
         ID3D11SamplerState* clamp_sampler = _clamp_sampler.Get();
         _context->PSSetSamplers(0, 1, &linear_sampler);
         _context->PSSetSamplers(1, 1, &clamp_sampler);
 
-        ID3D11ShaderResourceView* resources[] =
+        ID3D11ShaderResourceView* resources[11] =
         {
             _transmittance_srv.Get(),
+            _single_rayleigh_srv.Get(),
+            _single_mie_srv.Get(),
+            _delta_multiple_srv.Get(),
+            _irradiance_sum_a_srv.Get(),
+            _scattering_density_srv.Get(),
             _sky_a_srv.Get(),
             _sky_b_srv.Get(),
-            _sky_current_srv.Get()
+            _sky_current_srv.Get(),
+            _scattering_sum_a_srv.Get(),
+            _single_mie_srv.Get()
         };
-        _context->PSSetShaderResources(0, 4, resources);
+        _context->PSSetShaderResources(0, 11, resources);
 
         ID3D11PixelShader* pixel_shader = _direct_ps.Get();
         switch (_render_method)
@@ -241,8 +442,8 @@ namespace desktopworld
         _context->Draw(3, 0);
         _profiler.end_scope(gpu_profile_scope::render);
 
-        ID3D11ShaderResourceView* null_resources[4]{};
-        _context->PSSetShaderResources(0, 4, null_resources);
+        ID3D11ShaderResourceView* null_resources[11]{};
+        _context->PSSetShaderResources(0, 11, null_resources);
         _context->OMSetRenderTargets(0, nullptr, nullptr);
     }
 
@@ -290,10 +491,15 @@ namespace desktopworld
 
         const auto create_compute = [&](const char* entry, ID3D11ComputeShader** shader) -> bool
         {
-            if (!compile_shader(path.c_str(), entry, "cs_5_0", bytecode.ReleaseAndGetAddressOf()))
+            if (!compile_shader(
+                path.c_str(),
+                entry,
+                "cs_5_0",
+                bytecode.ReleaseAndGetAddressOf()))
             {
                 return false;
             }
+
             return SUCCEEDED(_device->CreateComputeShader(
                 bytecode->GetBufferPointer(),
                 bytecode->GetBufferSize(),
@@ -303,10 +509,15 @@ namespace desktopworld
 
         const auto create_pixel = [&](const char* entry, ID3D11PixelShader** shader) -> bool
         {
-            if (!compile_shader(path.c_str(), entry, "ps_5_0", bytecode.ReleaseAndGetAddressOf()))
+            if (!compile_shader(
+                path.c_str(),
+                entry,
+                "ps_5_0",
+                bytecode.ReleaseAndGetAddressOf()))
             {
                 return false;
             }
+
             return SUCCEEDED(_device->CreatePixelShader(
                 bytecode->GetBufferPointer(),
                 bytecode->GetBufferSize(),
@@ -314,14 +525,47 @@ namespace desktopworld
                 shader));
         };
 
-        if (!create_compute("CS_Transmittance", _transmittance_cs.GetAddressOf()) ||
-            !create_compute("CS_SkyView", _sky_view_cs.GetAddressOf()) ||
-            !create_compute("CS_Blend", _blend_cs.GetAddressOf()))
+        const char* compute_entries[] =
         {
-            return false;
+            "CS_Transmittance",
+            "CS_DirectIrradiance",
+            "CS_SingleScattering",
+            "CS_ScatteringDensity",
+            "CS_MultipleScattering",
+            "CS_IndirectIrradiance",
+            "CS_AccumulateScattering",
+            "CS_AccumulateIrradiance",
+            "CS_SkyView",
+            "CS_Blend"
+        };
+
+        ID3D11ComputeShader** compute_shaders[] =
+        {
+            _transmittance_cs.GetAddressOf(),
+            _direct_irradiance_cs.GetAddressOf(),
+            _single_scattering_cs.GetAddressOf(),
+            _scattering_density_cs.GetAddressOf(),
+            _multiple_scattering_cs.GetAddressOf(),
+            _indirect_irradiance_cs.GetAddressOf(),
+            _accumulate_scattering_cs.GetAddressOf(),
+            _accumulate_irradiance_cs.GetAddressOf(),
+            _sky_view_cs.GetAddressOf(),
+            _blend_cs.GetAddressOf()
+        };
+
+        for (std::size_t index = 0; index < std::size(compute_entries); ++index)
+        {
+            if (!create_compute(compute_entries[index], compute_shaders[index]))
+            {
+                return false;
+            }
         }
 
-        if (!compile_shader(path.c_str(), "VS_Fullscreen", "vs_5_0", bytecode.ReleaseAndGetAddressOf()) ||
+        if (!compile_shader(
+            path.c_str(),
+            "VS_Fullscreen",
+            "vs_5_0",
+            bytecode.ReleaseAndGetAddressOf()) ||
             FAILED(_device->CreateVertexShader(
                 bytecode->GetBufferPointer(),
                 bytecode->GetBufferSize(),
@@ -347,6 +591,7 @@ namespace desktopworld
         sampler_description.ComparisonFunc = D3D11_COMPARISON_NEVER;
         sampler_description.MinLOD = 0.0f;
         sampler_description.MaxLOD = D3D11_FLOAT32_MAX;
+
         if (FAILED(_device->CreateSamplerState(
             &sampler_description,
             _linear_sampler.GetAddressOf())))
@@ -358,6 +603,7 @@ namespace desktopworld
         rasterizer_description.FillMode = D3D11_FILL_SOLID;
         rasterizer_description.CullMode = D3D11_CULL_NONE;
         rasterizer_description.DepthClipEnable = TRUE;
+
         if (FAILED(_device->CreateRasterizerState(
             &rasterizer_description,
             _rasterizer_state.GetAddressOf())))
@@ -368,6 +614,7 @@ namespace desktopworld
         sampler_description.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
         sampler_description.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
         sampler_description.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+
         return SUCCEEDED(_device->CreateSamplerState(
             &sampler_description,
             _clamp_sampler.GetAddressOf()));
@@ -381,14 +628,18 @@ namespace desktopworld
         description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
         if (FAILED(_device->CreateBuffer(
-            &description, nullptr, _frame_cb.GetAddressOf())))
+            &description,
+            nullptr,
+            _frame_cb.GetAddressOf())))
         {
             return false;
         }
 
         description.ByteWidth = sizeof(atmosphere_constants);
         return SUCCEEDED(_device->CreateBuffer(
-            &description, nullptr, _atmosphere_cb.GetAddressOf()));
+            &description,
+            nullptr,
+            _atmosphere_cb.GetAddressOf()));
     }
 
     bool atmosphere_renderer::create_textures()
@@ -399,6 +650,7 @@ namespace desktopworld
                 _transmittance_texture.GetAddressOf(),
                 _transmittance_srv.GetAddressOf(),
                 _transmittance_uav.GetAddressOf()) &&
+            create_static_scattering_textures() &&
             create_render_target(
                 sky_width,
                 sky_height,
@@ -419,6 +671,74 @@ namespace desktopworld
                 _sky_current_uav.GetAddressOf());
     }
 
+    bool atmosphere_renderer::create_static_scattering_textures()
+    {
+        const bool volumes_created =
+            create_volume_texture(
+                _single_rayleigh_texture.GetAddressOf(),
+                _single_rayleigh_srv.GetAddressOf(),
+                _single_rayleigh_uav.GetAddressOf()) &&
+            create_volume_texture(
+                _single_mie_texture.GetAddressOf(),
+                _single_mie_srv.GetAddressOf(),
+                _single_mie_uav.GetAddressOf()) &&
+            create_volume_texture(
+                _scattering_sum_a_texture.GetAddressOf(),
+                _scattering_sum_a_srv.GetAddressOf(),
+                _scattering_sum_a_uav.GetAddressOf()) &&
+            create_volume_texture(
+                _scattering_sum_b_texture.GetAddressOf(),
+                _scattering_sum_b_srv.GetAddressOf(),
+                _scattering_sum_b_uav.GetAddressOf()) &&
+            create_volume_texture(
+                _scattering_density_texture.GetAddressOf(),
+                _scattering_density_srv.GetAddressOf(),
+                _scattering_density_uav.GetAddressOf()) &&
+            create_volume_texture(
+                _delta_multiple_texture.GetAddressOf(),
+                _delta_multiple_srv.GetAddressOf(),
+                _delta_multiple_uav.GetAddressOf());
+
+        if (!volumes_created)
+        {
+            return false;
+        }
+
+        const bool irradiance_created =
+            create_render_target(
+                irradiance_width,
+                irradiance_height,
+                _direct_irradiance_texture.GetAddressOf(),
+                _direct_irradiance_srv.GetAddressOf(),
+                _direct_irradiance_uav.GetAddressOf()) &&
+            create_render_target(
+                irradiance_width,
+                irradiance_height,
+                _delta_irradiance_texture.GetAddressOf(),
+                _delta_irradiance_srv.GetAddressOf(),
+                _delta_irradiance_uav.GetAddressOf()) &&
+            create_render_target(
+                irradiance_width,
+                irradiance_height,
+                _next_irradiance_texture.GetAddressOf(),
+                _next_irradiance_srv.GetAddressOf(),
+                _next_irradiance_uav.GetAddressOf()) &&
+            create_render_target(
+                irradiance_width,
+                irradiance_height,
+                _irradiance_sum_a_texture.GetAddressOf(),
+                _irradiance_sum_a_srv.GetAddressOf(),
+                _irradiance_sum_a_uav.GetAddressOf()) &&
+            create_render_target(
+                irradiance_width,
+                irradiance_height,
+                _irradiance_sum_b_texture.GetAddressOf(),
+                _irradiance_sum_b_srv.GetAddressOf(),
+                _irradiance_sum_b_uav.GetAddressOf());
+
+        return irradiance_created;
+    }
+
     bool atmosphere_renderer::create_render_target(
         const unsigned int width,
         const unsigned int height,
@@ -434,17 +754,68 @@ namespace desktopworld
         description.Format = lut_format;
         description.SampleDesc.Count = 1;
         description.Usage = D3D11_USAGE_DEFAULT;
-        description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        description.BindFlags =
+            D3D11_BIND_SHADER_RESOURCE |
+            D3D11_BIND_UNORDERED_ACCESS;
 
-        if (FAILED(_device->CreateTexture2D(&description, nullptr, texture)))
+        if (FAILED(_device->CreateTexture2D(
+            &description,
+            nullptr,
+            texture)))
         {
             return false;
         }
-        if (FAILED(_device->CreateShaderResourceView(*texture, nullptr, srv)))
+
+        if (FAILED(_device->CreateShaderResourceView(
+            *texture,
+            nullptr,
+            srv)))
         {
             return false;
         }
-        return SUCCEEDED(_device->CreateUnorderedAccessView(*texture, nullptr, uav));
+
+        return SUCCEEDED(_device->CreateUnorderedAccessView(
+            *texture,
+            nullptr,
+            uav));
+    }
+
+    bool atmosphere_renderer::create_volume_texture(
+        ID3D11Texture3D** texture,
+        ID3D11ShaderResourceView** srv,
+        ID3D11UnorderedAccessView** uav)
+    {
+        D3D11_TEXTURE3D_DESC description{};
+        description.Width = scattering_width;
+        description.Height = scattering_height;
+        description.Depth = scattering_depth;
+        description.MipLevels = 1;
+        description.Format = lut_format;
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags =
+            D3D11_BIND_SHADER_RESOURCE |
+            D3D11_BIND_UNORDERED_ACCESS;
+
+        if (FAILED(_device->CreateTexture3D(
+            &description,
+            nullptr,
+            texture)))
+        {
+            return false;
+        }
+
+        if (FAILED(_device->CreateShaderResourceView(
+            *texture,
+            nullptr,
+            srv)))
+        {
+            return false;
+        }
+
+        return SUCCEEDED(_device->CreateUnorderedAccessView(
+            *texture,
+            nullptr,
+            uav));
     }
 
     bool atmosphere_renderer::compile_shader(
@@ -454,6 +825,7 @@ namespace desktopworld
         ID3DBlob** bytecode)
     {
         Microsoft::WRL::ComPtr<ID3DBlob> errors;
+
         const HRESULT result = D3DCompileFromFile(
             path,
             nullptr,
@@ -478,12 +850,14 @@ namespace desktopworld
             }
             return false;
         }
+
         return true;
     }
 
     void atmosphere_renderer::update_constant_buffers(
         const solar_state& sun,
-        const float blend_factor)
+        const float blend_factor,
+        const std::uint32_t scattering_order)
     {
         frame_constants constants{};
         constants.sun_direction[0] = sun.direction.x;
@@ -491,23 +865,41 @@ namespace desktopworld
         constants.sun_direction[2] = sun.direction.z;
         constants.exposure = _parameters.exposure;
         constants.blend_factor = blend_factor;
+        constants.scattering_order = scattering_order;
 
-        _context->UpdateSubresource(_frame_cb.Get(), 0, nullptr, &constants, 0, 0);
-        ID3D11Buffer* buffers[] = { _frame_cb.Get(), _atmosphere_cb.Get() };
+        _context->UpdateSubresource(
+            _frame_cb.Get(),
+            0,
+            nullptr,
+            &constants,
+            0,
+            0);
+
+        ID3D11Buffer* buffers[] =
+        {
+            _frame_cb.Get(),
+            _atmosphere_cb.Get()
+        };
         _context->CSSetConstantBuffers(0, 2, buffers);
+    }
+
+    void atmosphere_renderer::generate_static_luts()
+    {
+        generate_transmittance();
+        generate_direct_irradiance();
+        generate_single_scattering();
+        generate_multiple_scattering();
     }
 
     void atmosphere_renderer::generate_transmittance()
     {
-        if (!_transmittance_cs || !_transmittance_uav)
-        {
-            return;
-        }
-
         update_constant_buffers(solar_state{}, 0.0f);
+
         ID3D11UnorderedAccessView* output = _transmittance_uav.Get();
         _context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
-        _context->CSSetShader(_transmittance_cs.Get(), nullptr, 0);
+
+        ID3D11ComputeShader* shader = _transmittance_cs.Get();
+        _context->CSSetShader(shader, nullptr, 0);
         _context->Dispatch(
             (transmittance_width + 7) / 8,
             (transmittance_height + 7) / 8,
@@ -515,23 +907,250 @@ namespace desktopworld
         clear_compute_bindings();
     }
 
+    void atmosphere_renderer::generate_direct_irradiance()
+    {
+        update_constant_buffers(solar_state{}, 0.0f);
+
+        ID3D11ShaderResourceView* transmittance = _transmittance_srv.Get();
+        _context->CSSetShaderResources(0, 1, &transmittance);
+
+        ID3D11SamplerState* sampler = _clamp_sampler.Get();
+        _context->CSSetSamplers(1, 1, &sampler);
+
+        ID3D11UnorderedAccessView* output = _direct_irradiance_uav.Get();
+        _context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
+
+        _context->CSSetShader(_direct_irradiance_cs.Get(), nullptr, 0);
+        _context->Dispatch(
+            (irradiance_width + 7) / 8,
+            (irradiance_height + 7) / 8,
+            1);
+
+        clear_compute_bindings();
+    }
+
+    void atmosphere_renderer::generate_single_scattering()
+    {
+        update_constant_buffers(solar_state{}, 0.0f);
+
+        ID3D11ShaderResourceView* transmittance = _transmittance_srv.Get();
+        _context->CSSetShaderResources(0, 1, &transmittance);
+
+        ID3D11SamplerState* sampler = _clamp_sampler.Get();
+        _context->CSSetSamplers(1, 1, &sampler);
+
+        ID3D11UnorderedAccessView* outputs[] =
+        {
+            _single_rayleigh_uav.Get(),
+            _single_mie_uav.Get()
+        };
+        _context->CSSetUnorderedAccessViews(1, 2, outputs, nullptr);
+
+        _context->CSSetShader(_single_scattering_cs.Get(), nullptr, 0);
+        dispatch_3d(_single_scattering_cs.Get());
+        clear_compute_bindings();
+
+        _context->CopyResource(
+            _scattering_sum_a_texture.Get(),
+            _single_rayleigh_texture.Get());
+    }
+
+    void atmosphere_renderer::generate_multiple_scattering()
+    {
+        const float clear_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        _context->ClearUnorderedAccessViewFloat(
+            _irradiance_sum_a_uav.Get(),
+            clear_color);
+        _context->ClearUnorderedAccessViewFloat(
+            _irradiance_sum_b_uav.Get(),
+            clear_color);
+        _context->ClearUnorderedAccessViewFloat(
+            _delta_multiple_uav.Get(),
+            clear_color);
+        _context->CopyResource(
+            _delta_irradiance_texture.Get(),
+            _direct_irradiance_texture.Get());
+
+        for (std::uint32_t scattering_order = 2;
+            scattering_order <= _parameters.max_scattering_order;
+            ++scattering_order)
+        {
+            update_constant_buffers(
+                solar_state{},
+                0.0f,
+                scattering_order);
+
+            ID3D11ShaderResourceView* density_inputs[] =
+            {
+                _transmittance_srv.Get(),
+                _single_rayleigh_srv.Get(),
+                _single_mie_srv.Get(),
+                _delta_multiple_srv.Get(),
+                _delta_irradiance_srv.Get()
+            };
+            _context->CSSetShaderResources(0, 5, density_inputs);
+
+            ID3D11SamplerState* sampler = _clamp_sampler.Get();
+            _context->CSSetSamplers(1, 1, &sampler);
+
+            ID3D11UnorderedAccessView* density_output =
+                _scattering_density_uav.Get();
+            _context->CSSetUnorderedAccessViews(
+                1,
+                1,
+                &density_output,
+                nullptr);
+            _context->CSSetShader(_scattering_density_cs.Get(), nullptr, 0);
+            dispatch_3d(_scattering_density_cs.Get());
+            clear_compute_bindings();
+
+            update_constant_buffers(
+                solar_state{},
+                0.0f,
+                scattering_order - 1);
+
+            ID3D11ShaderResourceView* irradiance_inputs[] =
+            {
+                _transmittance_srv.Get(),
+                _single_rayleigh_srv.Get(),
+                _single_mie_srv.Get(),
+                _delta_multiple_srv.Get()
+            };
+            _context->CSSetShaderResources(0, 4, irradiance_inputs);
+            _context->CSSetSamplers(1, 1, &sampler);
+
+            ID3D11UnorderedAccessView* next_irradiance_output =
+                _next_irradiance_uav.Get();
+            _context->CSSetUnorderedAccessViews(
+                0,
+                1,
+                &next_irradiance_output,
+                nullptr);
+            _context->CSSetShader(_indirect_irradiance_cs.Get(), nullptr, 0);
+            _context->Dispatch(
+                (irradiance_width + 7) / 8,
+                (irradiance_height + 7) / 8,
+                1);
+            clear_compute_bindings();
+
+            ID3D11ShaderResourceView* irradiance_accumulation_inputs[] =
+            {
+                _irradiance_sum_a_srv.Get(),
+                _next_irradiance_srv.Get()
+            };
+            _context->CSSetShaderResources(4, 1, &irradiance_accumulation_inputs[0]);
+            _context->CSSetShaderResources(8, 1, &irradiance_accumulation_inputs[1]);
+
+            ID3D11UnorderedAccessView* irradiance_accumulation_output =
+                _irradiance_sum_b_uav.Get();
+            _context->CSSetUnorderedAccessViews(
+                0,
+                1,
+                &irradiance_accumulation_output,
+                nullptr);
+            _context->CSSetShader(_accumulate_irradiance_cs.Get(), nullptr, 0);
+            _context->Dispatch(
+                (irradiance_width + 7) / 8,
+                (irradiance_height + 7) / 8,
+                1);
+            clear_compute_bindings();
+
+            update_constant_buffers(
+                solar_state{},
+                0.0f,
+                scattering_order);
+
+            ID3D11ShaderResourceView* multiple_inputs[] =
+            {
+                _transmittance_srv.Get(),
+                _single_rayleigh_srv.Get(),
+                _single_mie_srv.Get(),
+                _delta_multiple_srv.Get(),
+                _delta_irradiance_srv.Get(),
+                _scattering_density_srv.Get()
+            };
+            _context->CSSetShaderResources(0, 6, multiple_inputs);
+            _context->CSSetSamplers(1, 1, &sampler);
+
+            ID3D11UnorderedAccessView* multiple_output =
+                _delta_multiple_uav.Get();
+            _context->CSSetUnorderedAccessViews(
+                1,
+                1,
+                &multiple_output,
+                nullptr);
+            _context->CSSetShader(_multiple_scattering_cs.Get(), nullptr, 0);
+            dispatch_3d(_multiple_scattering_cs.Get());
+            clear_compute_bindings();
+
+            ID3D11ShaderResourceView* scattering_accumulation_inputs[] =
+            {
+                _scattering_sum_a_srv.Get(),
+                _single_rayleigh_srv.Get(),
+                _single_mie_srv.Get(),
+                _delta_multiple_srv.Get()
+            };
+            _context->CSSetShaderResources(
+                3,
+                1,
+                &scattering_accumulation_inputs[3]);
+            _context->CSSetShaderResources(
+                9,
+                1,
+                &scattering_accumulation_inputs[0]);
+
+            ID3D11UnorderedAccessView* scattering_accumulation_output =
+                _scattering_sum_b_uav.Get();
+            _context->CSSetUnorderedAccessViews(
+                1,
+                1,
+                &scattering_accumulation_output,
+                nullptr);
+            _context->CSSetShader(_accumulate_scattering_cs.Get(), nullptr, 0);
+            dispatch_3d(_accumulate_scattering_cs.Get());
+            clear_compute_bindings();
+
+            swap_com_ptr(_scattering_sum_a_texture, _scattering_sum_b_texture);
+            swap_com_ptr(_scattering_sum_a_srv, _scattering_sum_b_srv);
+            swap_com_ptr(_scattering_sum_a_uav, _scattering_sum_b_uav);
+
+            swap_com_ptr(_irradiance_sum_a_texture, _irradiance_sum_b_texture);
+            swap_com_ptr(_irradiance_sum_a_srv, _irradiance_sum_b_srv);
+            swap_com_ptr(_irradiance_sum_a_uav, _irradiance_sum_b_uav);
+
+            swap_com_ptr(_delta_irradiance_texture, _next_irradiance_texture);
+            swap_com_ptr(_delta_irradiance_srv, _next_irradiance_srv);
+            swap_com_ptr(_delta_irradiance_uav, _next_irradiance_uav);
+        }
+    }
+
     void atmosphere_renderer::generate_sky_view(
         ID3D11UnorderedAccessView* target,
         const solar_state& sun)
     {
-        if (target == nullptr)
+        if (target == nullptr || !_static_luts_valid)
         {
             return;
         }
 
         update_constant_buffers(sun, 0.0f);
-        ID3D11ShaderResourceView* input = _transmittance_srv.Get();
-        _context->CSSetShaderResources(0, 1, &input);
+
+        ID3D11ShaderResourceView* static_resources[] =
+        {
+            _scattering_sum_a_srv.Get(),
+            _single_mie_srv.Get()
+        };
+        _context->CSSetShaderResources(9, 2, static_resources);
+
         ID3D11SamplerState* sampler = _clamp_sampler.Get();
         _context->CSSetSamplers(1, 1, &sampler);
+
         _context->CSSetUnorderedAccessViews(0, 1, &target, nullptr);
         _context->CSSetShader(_sky_view_cs.Get(), nullptr, 0);
-        _context->Dispatch((sky_width + 7) / 8, (sky_height + 7) / 8, 1);
+        _context->Dispatch(
+            (sky_width + 7) / 8,
+            (sky_height + 7) / 8,
+            1);
         clear_compute_bindings();
     }
 
@@ -544,20 +1163,34 @@ namespace desktopworld
             _sky_a_srv.Get(),
             _sky_b_srv.Get()
         };
-        _context->CSSetShaderResources(1, 2, inputs);
+        _context->CSSetShaderResources(6, 2, inputs);
+
         ID3D11UnorderedAccessView* output = _sky_current_uav.Get();
         _context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
         _context->CSSetShader(_blend_cs.Get(), nullptr, 0);
-        _context->Dispatch((sky_width + 7) / 8, (sky_height + 7) / 8, 1);
+        _context->Dispatch(
+            (sky_width + 7) / 8,
+            (sky_height + 7) / 8,
+            1);
         clear_compute_bindings();
+    }
+
+    void atmosphere_renderer::dispatch_3d(ID3D11ComputeShader* shader)
+    {
+        _context->CSSetShader(shader, nullptr, 0);
+        _context->Dispatch(
+            (scattering_width + 3) / 4,
+            (scattering_height + 3) / 4,
+            (scattering_depth + 3) / 4);
     }
 
     void atmosphere_renderer::clear_compute_bindings()
     {
-        ID3D11ShaderResourceView* null_srvs[4]{};
-        ID3D11UnorderedAccessView* null_uavs[1]{};
-        _context->CSSetShaderResources(0, 4, null_srvs);
-        _context->CSSetUnorderedAccessViews(0, 1, null_uavs, nullptr);
+        ID3D11ShaderResourceView* null_srvs[11]{};
+        ID3D11UnorderedAccessView* null_uavs[4]{};
+
+        _context->CSSetShaderResources(0, 11, null_srvs);
+        _context->CSSetUnorderedAccessViews(0, 4, null_uavs, nullptr);
         _context->CSSetShader(nullptr, nullptr, 0);
     }
 }
