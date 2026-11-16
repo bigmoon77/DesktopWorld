@@ -101,6 +101,7 @@ namespace desktopworld
         Microsoft::WRL::ComPtr<ID3D11PixelShader> _final_ps;
 
         Microsoft::WRL::ComPtr<ID3D11SamplerState> _linear_sampler;
+        Microsoft::WRL::ComPtr<ID3D11RasterizerState> _rasterizer_state;
         Microsoft::WRL::ComPtr<ID3D11Buffer> _frame_cb;
         Microsoft::WRL::ComPtr<ID3D11Buffer> _atmosphere_cb;
 
