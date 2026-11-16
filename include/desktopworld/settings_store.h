@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 
 namespace desktopworld
 {
@@ -37,14 +38,17 @@ namespace desktopworld
     private:
         bool resolve_path() const;
         double read_double(
-            const wchar_t* section,
-            const wchar_t* key,
+            const char* section,
+            const char* key,
             double fallback) const;
         int read_integer(
-            const wchar_t* section,
-            const wchar_t* key,
+            const char* section,
+            const char* key,
             int fallback) const;
 
         mutable std::filesystem::path _path;
+        std::unordered_map<
+            std::string,
+            std::unordered_map<std::string, std::string>> _values;
     };
 }
