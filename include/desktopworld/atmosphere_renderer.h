@@ -6,8 +6,21 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <filesystem>
+
 namespace desktopworld
 {
+    struct sky_quality_metrics
+    {
+        double mean_absolute_error = 0.0;
+        double root_mean_squared_error = 0.0;
+        double maximum_absolute_error = 0.0;
+        std::uint64_t pixel_count = 0;
+        unsigned int width = 0;
+        unsigned int height = 0;
+        bool valid = false;
+    };
+
     class atmosphere_renderer
     {
     public:
@@ -52,6 +65,23 @@ namespace desktopworld
         void end_profile_frame();
         bool get_profile_result(gpu_profile_result& result);
 
+        bool analyze_quality(
+            const solar_state& sample_a,
+            const solar_state& sample_b,
+            const solar_state& current,
+            float blend_factor,
+            unsigned int output_width,
+            unsigned int output_height,
+            sky_quality_metrics& blend_metrics,
+            sky_quality_metrics& direct_metrics);
+
+        bool capture_sky_pfm(
+            const std::filesystem::path& path,
+            const solar_state& sample_a,
+            const solar_state& sample_b,
+            const solar_state& current,
+            float blend_factor);
+
     private:
         struct frame_constants
         {
@@ -90,6 +120,13 @@ namespace desktopworld
         bool create_shaders(const wchar_t* shader_path);
         bool create_constant_buffers();
         bool create_textures();
+        bool render_hdr_target(
+            ID3D11RenderTargetView* target,
+            unsigned int width,
+            unsigned int height,
+            const solar_state& sun,
+            float blend_factor,
+            ID3D11PixelShader* pixel_shader);
         bool create_static_scattering_textures();
         bool create_render_target(
 
@@ -145,6 +182,8 @@ namespace desktopworld
         Microsoft::WRL::ComPtr<ID3D11PixelShader> _current_ps;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> _pair_ps;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> _final_ps;
+        Microsoft::WRL::ComPtr<ID3D11PixelShader> _direct_radiance_ps;
+        Microsoft::WRL::ComPtr<ID3D11PixelShader> _final_radiance_ps;
 
         Microsoft::WRL::ComPtr<ID3D11SamplerState> _linear_sampler;
         Microsoft::WRL::ComPtr<ID3D11SamplerState> _clamp_sampler;
@@ -198,6 +237,10 @@ namespace desktopworld
         Microsoft::WRL::ComPtr<ID3D11Texture2D> _sky_b_texture;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _sky_b_srv;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _sky_b_uav;
+
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> _quality_reference_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _quality_reference_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _quality_reference_uav;
 
         Microsoft::WRL::ComPtr<ID3D11Texture2D> _sky_current_texture;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _sky_current_srv;
