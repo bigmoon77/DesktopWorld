@@ -243,6 +243,59 @@ namespace desktopworld
             0.0,
             0.1));
 
+        settings.atmosphere.mie_extinction.x = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "MieExtinctionR", settings.atmosphere.mie_extinction.x),
+            0.0,
+            0.1));
+        settings.atmosphere.mie_extinction.y = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "MieExtinctionG", settings.atmosphere.mie_extinction.y),
+            0.0,
+            0.1));
+        settings.atmosphere.mie_extinction.z = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "MieExtinctionB", settings.atmosphere.mie_extinction.z),
+            0.0,
+            0.1));
+
+        settings.atmosphere.ozone_absorption.x = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "OzoneR", settings.atmosphere.ozone_absorption.x),
+            0.0,
+            0.1));
+        settings.atmosphere.ozone_absorption.y = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "OzoneG", settings.atmosphere.ozone_absorption.y),
+            0.0,
+            0.1));
+        settings.atmosphere.ozone_absorption.z = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "OzoneB", settings.atmosphere.ozone_absorption.z),
+            0.0,
+            0.1));
+        settings.atmosphere.ozone_center_height_km = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "OzoneCenterHeightKm", settings.atmosphere.ozone_center_height_km),
+            5.0,
+            60.0));
+        settings.atmosphere.ozone_half_width_km = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "OzoneHalfWidthKm", settings.atmosphere.ozone_half_width_km),
+            1.0,
+            40.0));
+
+        settings.atmosphere.ground_albedo.x = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "GroundAlbedoR", settings.atmosphere.ground_albedo.x),
+            0.0,
+            1.0));
+        settings.atmosphere.ground_albedo.y = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "GroundAlbedoG", settings.atmosphere.ground_albedo.y),
+            0.0,
+            1.0));
+        settings.atmosphere.ground_albedo.z = static_cast<float>(std::clamp(
+            read_double("Atmosphere", "GroundAlbedoB", settings.atmosphere.ground_albedo.z),
+            0.0,
+            1.0));
+        settings.atmosphere.max_scattering_order = static_cast<std::uint32_t>(
+            std::clamp(
+                read_integer("Atmosphere", "MaxScatteringOrder",
+                    static_cast<int>(settings.atmosphere.max_scattering_order)),
+                2,
+                4));
+
         settings.atmosphere.rayleigh_scale_height_km = static_cast<float>(std::clamp(
             read_double(
                 "Atmosphere",
@@ -328,6 +381,30 @@ namespace desktopworld
             << format_double(settings.atmosphere.mie_scattering.y) << "\n";
         file << "MieScatteringB="
             << format_double(settings.atmosphere.mie_scattering.z) << "\n";
+        file << "MieExtinctionR="
+            << format_double(settings.atmosphere.mie_extinction.x) << "\n";
+        file << "MieExtinctionG="
+            << format_double(settings.atmosphere.mie_extinction.y) << "\n";
+        file << "MieExtinctionB="
+            << format_double(settings.atmosphere.mie_extinction.z) << "\n";
+        file << "OzoneR="
+            << format_double(settings.atmosphere.ozone_absorption.x) << "\n";
+        file << "OzoneG="
+            << format_double(settings.atmosphere.ozone_absorption.y) << "\n";
+        file << "OzoneB="
+            << format_double(settings.atmosphere.ozone_absorption.z) << "\n";
+        file << "OzoneCenterHeightKm="
+            << format_double(settings.atmosphere.ozone_center_height_km) << "\n";
+        file << "OzoneHalfWidthKm="
+            << format_double(settings.atmosphere.ozone_half_width_km) << "\n";
+        file << "GroundAlbedoR="
+            << format_double(settings.atmosphere.ground_albedo.x) << "\n";
+        file << "GroundAlbedoG="
+            << format_double(settings.atmosphere.ground_albedo.y) << "\n";
+        file << "GroundAlbedoB="
+            << format_double(settings.atmosphere.ground_albedo.z) << "\n";
+        file << "MaxScatteringOrder="
+            << settings.atmosphere.max_scattering_order << "\n";
         file << "RayleighScaleHeightKm="
             << format_double(settings.atmosphere.rayleigh_scale_height_km) << "\n";
         file << "MieScaleHeightKm="
