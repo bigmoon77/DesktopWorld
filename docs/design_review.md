@@ -1,7 +1,7 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象ブランチ: `feature/initial-implementation`
-- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.5
+- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.6
 - レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、HDR品質計測、Bruneton CPU比較CLIの仕様とコードの照合
 - 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
 - 未完了: 実際のGPU captureを用いたBruneton比較値の収集、実機での複数モニター / Explorer 復旧検証。
@@ -99,7 +99,7 @@
 - Render Method A/B の capture を受け付け、C/D の時間補間を含む capture は拒否する。
 - RGB係数を 440 / 550 / 680 nm に一致させ、km⁻¹→m⁻¹ の変換と同一の density profile / atmosphere geometry を使用する。
 - 参照画像と combined / per-channel MAE・RMSE・max error を出力する。
-- 47波長CPU referenceの初回初期化・PFM実測はCIで実行していない。scalar solar intensityを47波長で一定とする近似を含むため、設計上の比較と実太陽スペクトルの完全な検証は区別する。
+- `--self-test` で PFM round-trip / 画像上下反転 / RGB spectral anchor / MAE・RMSE・最大誤差を検証する。47波長CPU referenceの初回初期化・実GPU capture比較はCIで実行していない。scalar solar intensityを47波長で一定とする近似を含むため、設計上の比較と実太陽スペクトルの完全な検証は区別する。
 
 ### 4.4 GPUメモリ監視の実装確認
 
@@ -114,7 +114,7 @@
 
 - Debug Configure / Build / Test
 - Release Build / Test
-- Optional `DESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON` configure and `bruneton_reference_compare` target build
+- Optional `DESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON` configure, `bruneton_reference_compare` target build, and `--self-test` execution
 - HLSL 17 entry-point compile validation
 - 太陽位置・サンプル区間・環境サンプルキャッシュ・設定往復・Frame Controller・RenderPass順序のコアテスト
 
