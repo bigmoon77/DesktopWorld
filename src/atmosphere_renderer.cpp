@@ -67,6 +67,7 @@ namespace desktopworld
         _transmittance_srv.Reset();
         _transmittance_texture.Reset();
 
+        _linear_sampler.Reset();
         _frame_cb.Reset();
         _atmosphere_cb.Reset();
 
@@ -160,8 +161,15 @@ namespace desktopworld
         _context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         _context->VSSetShader(_fullscreen_vs.Get(), nullptr, 0);
 
+        if (_render_method == render_method::sky_blend_compute)
+        {
+            blend_sky_views(blend_factor);
+        }
+
         ID3D11Buffer* constant_buffers[] = { _frame_cb.Get(), _atmosphere_cb.Get() };
         _context->PSSetConstantBuffers(0, 2, constant_buffers);
+        ID3D11SamplerState* sampler = _linear_sampler.Get();
+        _context->PSSetSamplers(0, 1, &sampler);
 
         ID3D11ShaderResourceView* resources[] =
         {
@@ -185,7 +193,6 @@ namespace desktopworld
             pixel_shader = _pair_ps.Get();
             break;
         case render_method::sky_blend_compute:
-            blend_sky_views(blend_factor);
             pixel_shader = _final_ps.Get();
             break;
         }
@@ -268,10 +275,25 @@ namespace desktopworld
             return false;
         }
 
-        return create_pixel("PS_Direct", _direct_ps.GetAddressOf()) &&
-            create_pixel("PS_SkyCurrent", _current_ps.GetAddressOf()) &&
-            create_pixel("PS_SkyPair", _pair_ps.GetAddressOf()) &&
-            create_pixel("PS_SkyFinal", _final_ps.GetAddressOf());
+        if (!create_pixel("PS_Direct", _direct_ps.GetAddressOf()) ||
+            !create_pixel("PS_SkyCurrent", _current_ps.GetAddressOf()) ||
+            !create_pixel("PS_SkyPair", _pair_ps.GetAddressOf()) ||
+            !create_pixel("PS_SkyFinal", _final_ps.GetAddressOf()))
+        {
+            return false;
+        }
+
+        D3D11_SAMPLER_DESC sampler_description{};
+        sampler_description.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        sampler_description.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+        sampler_description.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sampler_description.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sampler_description.ComparisonFunc = D3D11_COMPARISON_NEVER;
+        sampler_description.MinLOD = 0.0f;
+        sampler_description.MaxLOD = D3D11_FLOAT32_MAX;
+        return SUCCEEDED(_device->CreateSamplerState(
+            &sampler_description,
+            _linear_sampler.GetAddressOf()));
     }
 
     bool atmosphere_renderer::create_constant_buffers()
@@ -428,6 +450,8 @@ namespace desktopworld
         update_constant_buffers(sun, 0.0f);
         ID3D11ShaderResourceView* input = _transmittance_srv.Get();
         _context->CSSetShaderResources(0, 1, &input);
+        ID3D11SamplerState* sampler = _linear_sampler.Get();
+        _context->CSSetSamplers(0, 1, &sampler);
         _context->CSSetUnorderedAccessViews(0, 1, &target, nullptr);
         _context->CSSetShader(_sky_view_cs.Get(), nullptr, 0);
         _context->Dispatch((sky_width + 7) / 8, (sky_height + 7) / 8, 1);
