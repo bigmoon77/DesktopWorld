@@ -41,7 +41,6 @@ namespace desktopworld
             const wchar_t* section,
             const wchar_t* key,
             int fallback) const;
-        static std::wstring format_double(double value);
 
         mutable std::filesystem::path _path;
     };
