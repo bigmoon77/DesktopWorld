@@ -53,6 +53,8 @@ target_compile_definitions(desktopworld PRIVATE
     _UNICODE
     NOMINMAX
     WIN32_LEAN_AND_MEAN
+    WINVER=0x0A00
+    _WIN32_WINNT=0x0A00
     $<$<CONFIG:Debug>:DW_ENABLE_DEBUG_UI>
 )
 
