@@ -34,9 +34,15 @@ namespace desktopworld
         DirectX::XMFLOAT3 rayleigh_scattering{ 0.005802f, 0.013558f, 0.033100f };
         float rayleigh_scale_height_km = 8.0f;
         DirectX::XMFLOAT3 mie_scattering{ 0.003996f, 0.003996f, 0.003996f };
+        DirectX::XMFLOAT3 mie_extinction{ 0.004440f, 0.004440f, 0.004440f };
         float mie_scale_height_km = 1.2f;
         float mie_g = 0.8f;
+        DirectX::XMFLOAT3 ozone_absorption{ 0.000650f, 0.001881f, 0.000085f };
+        float ozone_center_height_km = 25.0f;
+        float ozone_half_width_km = 15.0f;
+        DirectX::XMFLOAT3 ground_albedo{ 0.1f, 0.1f, 0.1f };
         float solar_intensity = 20.0f;
+        std::uint32_t max_scattering_order = 4;
         float exposure = 1.0f;
     };
 
