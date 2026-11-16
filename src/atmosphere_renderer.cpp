@@ -1,8 +1,11 @@
 #include "desktopworld/atmosphere_renderer.h"
 
 #include <d3dcompiler.h>
+#include <ShlObj.h>
 
 #include <algorithm>
+#include <array>
+#include <fstream>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -69,6 +72,362 @@ namespace desktopworld
                 sizeof(atmosphere_renderer::scattering_width));
 
             return hash;
+        }
+
+
+        struct static_cache_header
+        {
+            char magic[8]{};
+            std::uint32_t version = 1;
+            std::uint32_t format = static_cast<std::uint32_t>(lut_format);
+            std::uint32_t transmittance_width = 0;
+            std::uint32_t transmittance_height = 0;
+            std::uint32_t irradiance_width = 0;
+            std::uint32_t irradiance_height = 0;
+            std::uint32_t scattering_width = 0;
+            std::uint32_t scattering_height = 0;
+            std::uint32_t scattering_depth = 0;
+            std::uint64_t parameter_hash = 0;
+        };
+
+        bool write_texture_2d(
+            ID3D11Device* device,
+            ID3D11DeviceContext* context,
+            ID3D11Texture2D* texture,
+            std::ostream& stream)
+        {
+            if (device == nullptr || context == nullptr || texture == nullptr)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC description{};
+            texture->GetDesc(&description);
+
+            if (description.Format != lut_format ||
+                description.SampleDesc.Count != 1)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC staging_description = description;
+            staging_description.Usage = D3D11_USAGE_STAGING;
+            staging_description.BindFlags = 0;
+            staging_description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            staging_description.MiscFlags = 0;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> staging;
+            if (FAILED(device->CreateTexture2D(
+                &staging_description,
+                nullptr,
+                staging.GetAddressOf())))
+            {
+                return false;
+            }
+
+            context->CopyResource(staging.Get(), texture);
+
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (FAILED(context->Map(
+                staging.Get(),
+                0,
+                D3D11_MAP_READ,
+                0,
+                &mapped)))
+            {
+                return false;
+            }
+
+            const std::size_t row_bytes =
+                static_cast<std::size_t>(description.Width) * 8U;
+
+            bool success = true;
+            for (std::uint32_t row = 0; row < description.Height; ++row)
+            {
+                const char* source =
+                    static_cast<const char*>(mapped.pData) +
+                    static_cast<std::size_t>(row) * mapped.RowPitch;
+                stream.write(source, static_cast<std::streamsize>(row_bytes));
+                if (!stream.good())
+                {
+                    success = false;
+                    break;
+                }
+            }
+
+            context->Unmap(staging.Get(), 0);
+            return success;
+        }
+
+        bool read_texture_2d(
+            ID3D11Device* device,
+            ID3D11DeviceContext* context,
+            ID3D11Texture2D* texture,
+            std::istream& stream)
+        {
+            if (device == nullptr || context == nullptr || texture == nullptr)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC description{};
+            texture->GetDesc(&description);
+
+            if (description.Format != lut_format ||
+                description.SampleDesc.Count != 1)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC staging_description = description;
+            staging_description.Usage = D3D11_USAGE_STAGING;
+            staging_description.BindFlags = 0;
+            staging_description.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            staging_description.MiscFlags = 0;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> staging;
+            if (FAILED(device->CreateTexture2D(
+                &staging_description,
+                nullptr,
+                staging.GetAddressOf())))
+            {
+                return false;
+            }
+
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (FAILED(context->Map(
+                staging.Get(),
+                0,
+                D3D11_MAP_WRITE,
+                0,
+                &mapped)))
+            {
+                return false;
+            }
+
+            const std::size_t row_bytes =
+                static_cast<std::size_t>(description.Width) * 8U;
+
+            bool success = true;
+            for (std::uint32_t row = 0; row < description.Height; ++row)
+            {
+                char* destination =
+                    static_cast<char*>(mapped.pData) +
+                    static_cast<std::size_t>(row) * mapped.RowPitch;
+                stream.read(destination, static_cast<std::streamsize>(row_bytes));
+                if (!stream.good())
+                {
+                    success = false;
+                    break;
+                }
+            }
+
+            context->Unmap(staging.Get(), 0);
+            if (!success)
+            {
+                return false;
+            }
+
+            context->CopyResource(texture, staging.Get());
+            return true;
+        }
+
+        bool write_texture_3d(
+            ID3D11Device* device,
+            ID3D11DeviceContext* context,
+            ID3D11Texture3D* texture,
+            std::ostream& stream)
+        {
+            if (device == nullptr || context == nullptr || texture == nullptr)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE3D_DESC description{};
+            texture->GetDesc(&description);
+
+            if (description.Format != lut_format)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE3D_DESC staging_description = description;
+            staging_description.Usage = D3D11_USAGE_STAGING;
+            staging_description.BindFlags = 0;
+            staging_description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            staging_description.MiscFlags = 0;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture3D> staging;
+            if (FAILED(device->CreateTexture3D(
+                &staging_description,
+                nullptr,
+                staging.GetAddressOf())))
+            {
+                return false;
+            }
+
+            context->CopyResource(staging.Get(), texture);
+
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (FAILED(context->Map(
+                staging.Get(),
+                0,
+                D3D11_MAP_READ,
+                0,
+                &mapped)))
+            {
+                return false;
+            }
+
+            const std::size_t row_bytes =
+                static_cast<std::size_t>(description.Width) * 8U;
+
+            bool success = true;
+            for (std::uint32_t depth = 0; depth < description.Depth; ++depth)
+            {
+                const char* depth_data =
+                    static_cast<const char*>(mapped.pData) +
+                    static_cast<std::size_t>(depth) * mapped.DepthPitch;
+
+                for (std::uint32_t row = 0; row < description.Height; ++row)
+                {
+                    const char* source =
+                        depth_data +
+                        static_cast<std::size_t>(row) * mapped.RowPitch;
+                    stream.write(source, static_cast<std::streamsize>(row_bytes));
+                    if (!stream.good())
+                    {
+                        success = false;
+                        break;
+                    }
+                }
+
+                if (!success)
+                {
+                    break;
+                }
+            }
+
+            context->Unmap(staging.Get(), 0);
+            return success;
+        }
+
+        bool read_texture_3d(
+            ID3D11Device* device,
+            ID3D11DeviceContext* context,
+            ID3D11Texture3D* texture,
+            std::istream& stream)
+        {
+            if (device == nullptr || context == nullptr || texture == nullptr)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE3D_DESC description{};
+            texture->GetDesc(&description);
+
+            if (description.Format != lut_format)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE3D_DESC staging_description = description;
+            staging_description.Usage = D3D11_USAGE_STAGING;
+            staging_description.BindFlags = 0;
+            staging_description.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            staging_description.MiscFlags = 0;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture3D> staging;
+            if (FAILED(device->CreateTexture3D(
+                &staging_description,
+                nullptr,
+                staging.GetAddressOf())))
+            {
+                return false;
+            }
+
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (FAILED(context->Map(
+                staging.Get(),
+                0,
+                D3D11_MAP_WRITE,
+                0,
+                &mapped)))
+            {
+                return false;
+            }
+
+            const std::size_t row_bytes =
+                static_cast<std::size_t>(description.Width) * 8U;
+
+            bool success = true;
+            for (std::uint32_t depth = 0; depth < description.Depth; ++depth)
+            {
+                char* depth_data =
+                    static_cast<char*>(mapped.pData) +
+                    static_cast<std::size_t>(depth) * mapped.DepthPitch;
+
+                for (std::uint32_t row = 0; row < description.Height; ++row)
+                {
+                    char* destination =
+                        depth_data +
+                        static_cast<std::size_t>(row) * mapped.RowPitch;
+                    stream.read(destination, static_cast<std::streamsize>(row_bytes));
+                    if (!stream.good())
+                    {
+                        success = false;
+                        break;
+                    }
+                }
+
+                if (!success)
+                {
+                    break;
+                }
+            }
+
+            context->Unmap(staging.Get(), 0);
+            if (!success)
+            {
+                return false;
+            }
+
+            context->CopyResource(texture, staging.Get());
+            return true;
+        }
+
+        std::filesystem::path get_static_cache_path(const std::uint64_t parameter_hash)
+        {
+            wchar_t local_app_data[MAX_PATH]{};
+            const HRESULT result = SHGetFolderPathW(
+                nullptr,
+                CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE,
+                nullptr,
+                SHGFP_TYPE_CURRENT,
+                local_app_data);
+
+            if (FAILED(result))
+            {
+                return {};
+            }
+
+            const std::filesystem::path cache_directory =
+                std::filesystem::path(local_app_data) /
+                L"DesktopWorld" /
+                L"Cache";
+
+            std::error_code error;
+            std::filesystem::create_directories(cache_directory, error);
+            if (error)
+            {
+                return {};
+            }
+
+            std::wostringstream file_name;
+            file_name << std::hex << std::setfill(L'0')
+                << std::setw(16) << parameter_hash << L".bin";
+
+            return cache_directory / file_name.str();
         }
 
         void swap_com_ptr(
