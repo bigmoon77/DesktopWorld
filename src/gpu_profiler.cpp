@@ -148,7 +148,7 @@ namespace desktopworld
         _write_index = (_write_index + 1) % frame_count;
     }
 
-    bool gpu_profiler::poll(gpu_profile_result& result) const
+    bool gpu_profiler::poll(gpu_profile_result& result)
     {
         if (!_initialized)
         {
@@ -161,8 +161,7 @@ namespace desktopworld
             const std::size_t index =
                 (_write_index + frame_count - 1 - offset) % frame_count;
 
-            frame_queries& queries =
-                const_cast<frame_queries&>(_frames[index]);
+            frame_queries& queries = _frames[index];
 
             if (!queries.pending)
             {
@@ -173,8 +172,8 @@ namespace desktopworld
             if (collect_frame(queries, completed))
             {
                 queries.pending = false;
-                const_cast<gpu_profiler*>(this)->_latest_result = completed;
-                const_cast<gpu_profiler*>(this)->_has_result = true;
+                _latest_result = completed;
+                _has_result = true;
                 found = true;
                 break;
             }
