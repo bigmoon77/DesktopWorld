@@ -264,11 +264,13 @@ Pass は WorkerW の HWND や settings_store を直接参照しない。
 
 ### 7.2 マルチモニター
 
-- EnumDisplayMonitors と GetMonitorInfo でモニターを列挙する。
-- 各モニターに desktop child window / SwapChain / RenderTarget を 1 組持つ。
-- D3D11 device と大気 LUT は原則共有する。
-- モニター解像度・配置・DPI が変化したら対象 SwapChain を再構築する。
-- 描画ホストの作成・破棄はモニター単位で独立させる。
+- monitor_manager は EnumDisplayMonitors / GetMonitorInfo を用いてモニターの物理座標と device name を取得する。
+- 各モニターの bounds union を仮想デスクトップ範囲とする。負の左上座標を許容する。
+- WorkerW client area に仮想デスクトップ矩形を MapWindowPoints で変換し、矩形全体が client area 内に収まることを確認する。
+- 初期実装は仮想デスクトップ全体を覆う1つの child window / SwapChain / RenderTarget を使う。全モニターに同じ空を表示する。
+- モニター追加・削除・配置・解像度変更時は monitor_manager を再列挙し、ウィンドウと SwapChain を再構築する。
+- 現行の WorkerW 親が仮想デスクトップ全体を包含しない場合は、誤った部分表示を避けて起動・復旧を失敗させる。
+- モニターごとに異なる環境を設定する機能、複数 WorkerW 親、複数 SwapChain は後続設計で追加する。
 
 ## 8. 設定ファイル
 
