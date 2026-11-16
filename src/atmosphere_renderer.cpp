@@ -72,7 +72,6 @@ namespace desktopworld
         _rasterizer_state.Reset();
         _clamp_sampler.Reset();
         _linear_sampler.Reset();
-        _linear_sampler.Reset();
         _frame_cb.Reset();
         _atmosphere_cb.Reset();
 
