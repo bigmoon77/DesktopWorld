@@ -1,6 +1,7 @@
 #pragma once
 
 #include "desktopworld/types.h"
+#include "desktopworld/gpu_profiler.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -41,6 +42,10 @@ namespace desktopworld
 
         const atmosphere_parameters& get_parameters() const;
         bool is_initialized() const;
+
+        void begin_profile_frame();
+        void end_profile_frame();
+        bool get_profile_result(gpu_profile_result& result);
 
     private:
         struct frame_constants
@@ -88,6 +93,7 @@ namespace desktopworld
         void blend_sky_views(float blend_factor);
         void clear_compute_bindings();
 
+        gpu_profiler _profiler;
         Microsoft::WRL::ComPtr<ID3D11Device> _device;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> _context;
 
