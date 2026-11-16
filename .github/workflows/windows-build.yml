@@ -41,3 +41,6 @@ jobs:
 
       - name: Build reference comparator
         run: cmake --build out/reference --config Release --target bruneton_reference_compare --parallel
+
+      - name: Run comparator self-tests
+        run: .\out\reference\Release\bruneton_reference_compare.exe --self-test
