@@ -194,6 +194,9 @@ namespace desktopworld
         int sample_interval_override_seconds = 0;
         bool fixed_time_enabled = false;
         bool debug_window_visible = true;
+#ifdef DW_ENABLE_DEBUG_UI
+        bool pending_time_dirty = false;
+#endif
 
         unsigned int desktop_width = 0;
         unsigned int desktop_height = 0;
@@ -837,6 +840,7 @@ namespace desktopworld
                             utc_hour = fixed_time.wHour;
                             utc_minute = fixed_time.wMinute;
                         }
+                        pending_time_dirty = false;
                         environment_dirty = true;
                         frames.request_frame();
                     }
@@ -850,14 +854,38 @@ namespace desktopworld
                         time_changed |= ImGui::InputInt("Minute", &utc_minute);
                         if (time_changed)
                         {
-                            fixed_time.wYear = static_cast<WORD>(std::clamp(utc_year, 1601, 9999));
-                            fixed_time.wMonth = static_cast<WORD>(std::clamp(utc_month, 1, 12));
-                            fixed_time.wDay = static_cast<WORD>(std::clamp(utc_day, 1, 31));
-                            fixed_time.wHour = static_cast<WORD>(std::clamp(utc_hour, 0, 23));
-                            fixed_time.wMinute = static_cast<WORD>(std::clamp(utc_minute, 0, 59));
-                            fixed_time.wSecond = 0;
-                            environment_dirty = true;
-                            frames.request_frame();
+                            pending_time_dirty = true;
+                        }
+
+                        if (ImGui::Button("Apply Time"))
+                        {
+                            SYSTEMTIME candidate{};
+                            candidate.wYear = static_cast<WORD>(std::clamp(utc_year, 1601, 9999));
+                            candidate.wMonth = static_cast<WORD>(std::clamp(utc_month, 1, 12));
+                            candidate.wDay = static_cast<WORD>(std::clamp(utc_day, 1, 31));
+                            candidate.wHour = static_cast<WORD>(std::clamp(utc_hour, 0, 23));
+                            candidate.wMinute = static_cast<WORD>(std::clamp(utc_minute, 0, 59));
+                            candidate.wSecond = 0;
+
+                            FILETIME validation_time{};
+                            if (SystemTimeToFileTime(&candidate, &validation_time))
+                            {
+                                fixed_time = candidate;
+                                pending_time_dirty = false;
+                                environment_dirty = true;
+                                frames.request_frame();
+                            }
+                            else
+                            {
+                                ImGui::TextColored(
+                                    ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                                    "Invalid UTC date/time.");
+                            }
+                        }
+                        if (pending_time_dirty)
+                        {
+                            ImGui::SameLine();
+                            ImGui::TextDisabled("Pending time edit");
                         }
 
                         if (ImGui::Button("-15 min"))
@@ -865,6 +893,12 @@ namespace desktopworld
                             const std::int64_t epoch =
                                 system_time_to_unix_seconds(fixed_time) - 900;
                             fixed_time = unix_seconds_to_system_time(epoch);
+                            utc_year = fixed_time.wYear;
+                            utc_month = fixed_time.wMonth;
+                            utc_day = fixed_time.wDay;
+                            utc_hour = fixed_time.wHour;
+                            utc_minute = fixed_time.wMinute;
+                            pending_time_dirty = false;
                             environment_dirty = true;
                             frames.request_frame();
                         }
@@ -874,6 +908,12 @@ namespace desktopworld
                             const std::int64_t epoch =
                                 system_time_to_unix_seconds(fixed_time) + 900;
                             fixed_time = unix_seconds_to_system_time(epoch);
+                            utc_year = fixed_time.wYear;
+                            utc_month = fixed_time.wMonth;
+                            utc_day = fixed_time.wDay;
+                            utc_hour = fixed_time.wHour;
+                            utc_minute = fixed_time.wMinute;
+                            pending_time_dirty = false;
                             environment_dirty = true;
                             frames.request_frame();
                         }
@@ -1242,6 +1282,9 @@ namespace desktopworld
 
     int desktop_app::run(const HINSTANCE instance, const int show_command)
     {
+        SetProcessDpiAwarenessContext(
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
         implementation app{};
         app.instance = instance;
 
@@ -1249,6 +1292,11 @@ namespace desktopworld
             !app.create_windows(show_command) ||
             !app.create_device_and_swap_chains())
         {
+            MessageBoxW(
+                nullptr,
+                L"DesktopWorld failed to initialize. Check the debug output for details.",
+                L"DesktopWorld",
+                MB_OK | MB_ICONERROR);
             app.shutdown();
             return 1;
         }
