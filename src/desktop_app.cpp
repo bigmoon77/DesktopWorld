@@ -288,6 +288,18 @@ namespace desktopworld
                     return HTTRANSPARENT;
                 }
 
+#ifdef DW_ENABLE_DEBUG_UI
+                if (window == app->desktop_window && message == WM_HOTKEY &&
+                    wparam == 1)
+                {
+                    app->debug_window_visible = !app->debug_window_visible;
+                    ShowWindow(
+                        app->debug_window,
+                        app->debug_window_visible ? SW_SHOW : SW_HIDE);
+                    return 0;
+                }
+#endif
+
                 if (message == WM_DISPLAYCHANGE)
                 {
                     app->refresh_desktop_bounds();
@@ -379,6 +391,11 @@ namespace desktopworld
             }
 
 #ifdef DW_ENABLE_DEBUG_UI
+            RegisterHotKey(
+                desktop_window,
+                1,
+                MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT,
+                'D');
             debug_window = CreateWindowExW(
                 0,
                 debug_class_name,
@@ -1103,6 +1120,12 @@ namespace desktopworld
                 ImGui_ImplDX11_Shutdown();
                 ImGui_ImplWin32_Shutdown();
                 ImGui::DestroyContext();
+            }
+#endif
+#ifdef DW_ENABLE_DEBUG_UI
+            if (desktop_window != nullptr && IsWindow(desktop_window))
+            {
+                UnregisterHotKey(desktop_window, 1);
             }
 #endif
             atmosphere.shutdown();
