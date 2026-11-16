@@ -106,7 +106,7 @@ namespace desktopworld
     }
 
 #ifdef DW_ENABLE_DEBUG_UI
-        std::filesystem::path create_sky_capture_path()
+        static std::filesystem::path create_sky_capture_path()
         {
             wchar_t local_app_data[MAX_PATH]{};
             if (FAILED(SHGetFolderPathW(
@@ -208,7 +208,7 @@ namespace desktopworld
         sky_quality_metrics blend_quality_metrics{};
         sky_quality_metrics direct_quality_metrics{};
         std::filesystem::path last_capture_path{};
-        std::wstring diagnostics_message{};
+        std::string diagnostics_message{};
 #endif
 
         atmosphere_parameters pending_parameters{};
@@ -1525,13 +1525,16 @@ namespace desktopworld
 
                     if (!diagnostics_message.empty())
                     {
-                        ImGui::TextWrapped("%ls", diagnostics_message.c_str());
+                        ImGui::TextWrapped("%s", diagnostics_message.c_str());
                     }
                     if (!last_capture_path.empty())
                     {
+                        const std::u8string capture_path_utf8 =
+                            last_capture_path.u8string();
                         ImGui::TextWrapped(
-                            "Last PFM: %ls",
-                            last_capture_path.wstring().c_str());
+                            "Last PFM: %s",
+                            reinterpret_cast<const char*>(
+                                capture_path_utf8.c_str()));
                     }
                     ImGui::EndTabItem();
                 }
@@ -1623,12 +1626,12 @@ namespace desktopworld
                     blend_quality_metrics = blend_result;
                     direct_quality_metrics = direct_result;
                     diagnostics_message =
-                        L"HDR quality measurement completed.";
+                        "HDR quality measurement completed.";
                 }
                 else
                 {
                     diagnostics_message =
-                        L"HDR quality measurement failed. Check D3D11 debug output.";
+                        "HDR quality measurement failed. Check D3D11 debug output.";
                 }
             }
 
@@ -1648,12 +1651,12 @@ namespace desktopworld
                 {
                     last_capture_path = capture_path;
                     diagnostics_message =
-                        L"Linear HDR Sky View LUT saved as PFM.";
+                        "Linear HDR Sky View LUT saved as PFM.";
                 }
                 else
                 {
                     diagnostics_message =
-                        L"PFM capture failed. Check the output folder and D3D11 state.";
+                        "PFM capture failed. Check the output folder and D3D11 state.";
                 }
             }
         }
