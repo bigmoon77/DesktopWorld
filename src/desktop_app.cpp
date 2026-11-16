@@ -15,7 +15,7 @@
 #include <Windows.h>
 #include <ShlObj.h>
 #include <d3d11.h>
-#include <dxgi.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 
 #ifdef DW_ENABLE_DEBUG_UI
@@ -222,6 +222,10 @@ namespace desktopworld
         Microsoft::WRL::ComPtr<ID3D11Device> device;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
         Microsoft::WRL::ComPtr<IDXGIFactory> dxgi_factory;
+#ifdef DW_ENABLE_DEBUG_UI
+        Microsoft::WRL::ComPtr<IDXGIAdapter3> dxgi_adapter3;
+        std::chrono::steady_clock::time_point last_gpu_memory_update{};
+#endif
         Microsoft::WRL::ComPtr<IDXGISwapChain> desktop_swap_chain;
         Microsoft::WRL::ComPtr<IDXGISwapChain> debug_swap_chain;
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> desktop_render_target;
@@ -839,6 +843,10 @@ namespace desktopworld
             {
                 return false;
             }
+
+#ifdef DW_ENABLE_DEBUG_UI
+            adapter.As(&dxgi_adapter3);
+#endif
 
             if (!create_desktop_swap_chain())
             {
@@ -1544,9 +1552,34 @@ namespace desktopworld
                     ImGui::Text("GPU Sky View: %.3f ms", stats.gpu_sky_generation_ms);
                     ImGui::Text("GPU blend: %.3f ms", stats.gpu_blend_ms);
                     ImGui::Text("GPU render: %.3f ms", stats.gpu_render_ms);
+                    ImGui::Separator();
+                    ImGui::Text("Process video memory (DXGI)");
+                    if (stats.gpu_local_memory_valid)
+                    {
+                        ImGui::Text(
+                            "  Local: %.1f / %.1f MiB",
+                            stats.gpu_local_memory_usage_mb,
+                            stats.gpu_local_memory_budget_mb);
+                    }
+                    else
+                    {
+                        ImGui::Text("  Local: unavailable");
+                    }
+                    if (stats.gpu_non_local_memory_valid)
+                    {
+                        ImGui::Text(
+                            "  Non-local: %.1f / %.1f MiB",
+                            stats.gpu_non_local_memory_usage_mb,
+                            stats.gpu_non_local_memory_budget_mb);
+                    }
+                    else
+                    {
+                        ImGui::Text("  Non-local: unavailable");
+                    }
                     ImGui::TextWrapped(
-                        "GPU durations are collected asynchronously with timestamp "
-                        "queries. GPU memory accounting is not implemented yet.");
+                        "DXGI reports current process usage and the OS budget for "
+                        "the selected adapter. This includes all GPU resources owned "
+                        "by this process, not only DesktopWorld's atmosphere textures.");
                     ImGui::EndTabItem();
                 }
 
@@ -1647,6 +1680,64 @@ namespace desktopworld
                 last_fps_measurement = now;
             }
         }
+
+
+#ifdef DW_ENABLE_DEBUG_UI
+        void update_gpu_memory_statistics(
+            const std::chrono::steady_clock::time_point now)
+        {
+            if (last_gpu_memory_update.time_since_epoch().count() != 0 &&
+                now - last_gpu_memory_update < std::chrono::seconds(1))
+            {
+                return;
+            }
+
+            last_gpu_memory_update = now;
+            stats.gpu_local_memory_valid = false;
+            stats.gpu_non_local_memory_valid = false;
+
+            if (!dxgi_adapter3)
+            {
+                return;
+            }
+
+            DXGI_QUERY_VIDEO_MEMORY_INFO local_info{};
+            if (SUCCEEDED(dxgi_adapter3->QueryVideoMemoryInfo(
+                0,
+                DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
+                &local_info)))
+            {
+                constexpr double bytes_per_megabyte = 1024.0 * 1024.0;
+                stats.gpu_local_memory_usage_mb =
+                    static_cast<float>(
+                        static_cast<double>(local_info.CurrentUsage) /
+                        bytes_per_megabyte);
+                stats.gpu_local_memory_budget_mb =
+                    static_cast<float>(
+                        static_cast<double>(local_info.Budget) /
+                        bytes_per_megabyte);
+                stats.gpu_local_memory_valid = true;
+            }
+
+            DXGI_QUERY_VIDEO_MEMORY_INFO non_local_info{};
+            if (SUCCEEDED(dxgi_adapter3->QueryVideoMemoryInfo(
+                0,
+                DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,
+                &non_local_info)))
+            {
+                constexpr double bytes_per_megabyte = 1024.0 * 1024.0;
+                stats.gpu_non_local_memory_usage_mb =
+                    static_cast<float>(
+                        static_cast<double>(non_local_info.CurrentUsage) /
+                        bytes_per_megabyte);
+                stats.gpu_non_local_memory_budget_mb =
+                    static_cast<float>(
+                        static_cast<double>(non_local_info.Budget) /
+                        bytes_per_megabyte);
+                stats.gpu_non_local_memory_valid = true;
+            }
+        }
+#endif
 
         void process_messages()
         {
@@ -1760,6 +1851,11 @@ namespace desktopworld
                     stats.gpu_blend_ms = gpu_result.blend_ms;
                     stats.gpu_render_ms = gpu_result.render_ms;
                 }
+
+#ifdef DW_ENABLE_DEBUG_UI
+                update_gpu_memory_statistics(
+                    std::chrono::steady_clock::now());
+#endif
             }
 
             return 0;
@@ -1791,6 +1887,9 @@ namespace desktopworld
             save_settings();
             render.shutdown();
             atmosphere.shutdown();
+#ifdef DW_ENABLE_DEBUG_UI
+            dxgi_adapter3.Reset();
+#endif
             debug_render_target.Reset();
             desktop_render_target.Reset();
             debug_swap_chain.Reset();
