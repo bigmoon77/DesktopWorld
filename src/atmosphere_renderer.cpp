@@ -184,8 +184,10 @@ namespace desktopworld
 
         ID3D11Buffer* constant_buffers[] = { _frame_cb.Get(), _atmosphere_cb.Get() };
         _context->PSSetConstantBuffers(0, 2, constant_buffers);
-        ID3D11SamplerState* sampler = _linear_sampler.Get();
-        _context->PSSetSamplers(0, 1, &sampler);
+        ID3D11SamplerState* linear_sampler = _linear_sampler.Get();
+        ID3D11SamplerState* clamp_sampler = _clamp_sampler.Get();
+        _context->PSSetSamplers(0, 1, &linear_sampler);
+        _context->PSSetSamplers(1, 1, &clamp_sampler);
 
         ID3D11ShaderResourceView* resources[] =
         {
