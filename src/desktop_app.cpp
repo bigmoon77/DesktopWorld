@@ -269,7 +269,7 @@ namespace desktopworld
                     return 0;
                 }
 
-                if (message == WM_DISPLAYCHANGE)
+                if (message == WM_DISPLAYCHANGE || message == WM_DPICHANGED)
                 {
                     app->host_rebuild_requested = true;
                     return 0;
