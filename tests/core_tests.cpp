@@ -1,3 +1,4 @@
+#include "desktopworld/environment_controller.h"
 #include "desktopworld/frame_controller.h"
 #include "desktopworld/solar_model.h"
 #include "desktopworld/time_sample_scheduler.h"
@@ -139,6 +140,38 @@ namespace
         assert(threw);
     }
 
+    void test_environment_controller()
+    {
+        desktopworld::environment_controller controller;
+        controller.set_observer_location(35.6812, 139.7671);
+
+        SYSTEMTIME utc{};
+        utc.wYear = 2024;
+        utc.wMonth = 3;
+        utc.wDay = 20;
+        utc.wHour = 3;
+        utc.wMinute = 0;
+
+        const desktopworld::environment_frame first = controller.update(utc);
+        assert(first.sample_pair_changed);
+        assert(first.sample_window.interval_seconds == 3600);
+        assert(first.current_sun.elevation_degrees > 50.0f);
+
+        utc.wMinute = 5;
+        const desktopworld::environment_frame same_pair = controller.update(utc);
+        assert(!same_pair.sample_pair_changed);
+        assert(same_pair.sample_window.interval_seconds == 3600);
+
+        controller.set_observer_location(40.7128, -74.0060);
+        const desktopworld::environment_frame changed_location = controller.update(utc);
+        assert(changed_location.sample_pair_changed);
+
+        controller.set_sample_interval_override(900);
+        const desktopworld::environment_frame manual_interval = controller.update(utc);
+        assert(manual_interval.sample_pair_changed);
+        assert(manual_interval.sample_window.interval_seconds == 900);
+    }
+
     void test_frame_controller()
     {
         using desktopworld::frame_controller;
@@ -176,6 +209,7 @@ int main()
     test_solar_position();
     test_sample_intervals();
     test_sample_windows();
+    test_environment_controller();
     test_frame_controller();
 
     std::cout << "DesktopWorld core tests passed.\n";
