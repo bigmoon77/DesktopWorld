@@ -60,7 +60,8 @@ namespace desktopworld
             float sun_direction[3]{};
             float exposure = 1.0f;
             float blend_factor = 0.0f;
-            float padding[3]{};
+            std::uint32_t scattering_order = 0;
+            float padding[2]{};
         };
 
         struct atmosphere_constants
@@ -69,8 +70,6 @@ namespace desktopworld
             float planet_radius_km = 6360.0f;
             float mie_scattering[3]{};
             float atmosphere_height_km = 100.0f;
-            float rayleigh_scale_height_km = 8.0f;
-            float mie_scale_height_km = 1.2f;
             float mie_extinction[3]{};
             float rayleigh_scale_height_km = 8.0f;
             float ozone_absorption[3]{};
@@ -109,7 +108,10 @@ namespace desktopworld
             const char* target,
             ID3DBlob** bytecode);
 
-        void update_constant_buffers(const solar_state& sun, float blend_factor);
+        void update_constant_buffers(
+            const solar_state& sun,
+            float blend_factor,
+            std::uint32_t scattering_order = 0);
         void generate_static_luts();
         void generate_transmittance();
         void generate_direct_irradiance();
@@ -201,6 +203,8 @@ namespace desktopworld
 
         atmosphere_parameters _parameters{};
         render_method _render_method = render_method::sky_blend_compute;
+        std::uint64_t _static_parameter_hash = 0;
+        bool _static_luts_valid = false;
         bool _initialized = false;
     };
 }
