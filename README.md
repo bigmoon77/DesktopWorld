@@ -16,6 +16,8 @@ Windows desktop background renderer using Win32 and Direct3D 11.
   - D: two time samples blended into a low-resolution LUT with a compute shader.
 - Adaptive, fixed-rate, and on-demand desktop frame scheduling.
 - Debug-only ImGui control window in Debug builds.
+- Asynchronous D3D11 timestamp profiling for base LUT generation, Sky View generation, blending, and rendering.
+- Build-time HLSL entry-point validation on Windows CI.
 - Ctrl+Shift+D toggles the debug window.
 
 ## Build
