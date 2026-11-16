@@ -1,7 +1,7 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.0
-- 対応要件: docs/requirements.md v1.0
+- 文書バージョン: 1.1
+- 対応要件: docs/requirements.md v1.1
 - 状態: 実装着手前の整合設計
 - 対象 API: Win32 / Direct3D 11
 
@@ -140,7 +140,6 @@ Sky View Sample のキー:
 
 - atmosphere_parameter_hash
 - latitude / longitude
-- observer altitude
 - sample UTC epoch
 - sky LUT resolution
 - shader / model version
@@ -159,7 +158,9 @@ D:
 - Pixel Shader は sky_current をサンプルして tone mapping を行う。
 
 A:
-- 出力ピクセルごとに現在時刻の太陽方向を用いて単一散乱を直接評価する。低解像度 LUT / 時間補間との比較基準。
+- 出力ピクセルごとに現在時刻の太陽方向を用いて3D scattering LUTからradianceを直接評価する。
+- Sky View LUTと時間補間を使わないため、B/Dに対する空間LUT・時間サンプル近似の比較基準となる。
+- 3D scattering LUTそのものはStatic LUTの離散化誤差を含む。
 
 B:
 - 現在時刻の太陽方向で Sky View LUT を生成して描画する。基準方式として毎回の再生成を許す。通常運用の既定値にはしない。
@@ -205,16 +206,16 @@ Dynamic LUT:
 
 散乱次数ごとの中間結果は次の次数の入力になる。順序・入出力リソースを固定し、Compute Shader の各段階を個別に計測できるようにする。
 
-初期値は 4 次とする。低次・高次の品質と GPU 時間を比較し、最終値を決める。
+初期値は最大 4 次とし、設定で 2～4 次を選択できる。現行実装はRGB近似であり、角度積分は4×8サンプル、レイ方向の積分は24ステップ（Transmittanceは48ステップ）に抑えた低負荷プロトタイプである。参照実装の高精度設定とは異なる。GPU時間と参照画像誤差を測定して、最終サンプル数を決定する。
 
 ### 5.3 Static LUT キャッシュ
 
-- 保存先: %LOCALAPPDATA%/DesktopWorld/Cache/<parameter-hash>/
+- 保存先: %LOCALAPPDATA%/DesktopWorld/Cache/<16桁parameter-hash>.bin
 - パラメータ・解像度・アルゴリズムバージョンを含む hash を使用する。
 - 全ファイルが存在し、ヘッダ・サイズ・version が一致する場合のみロードする。
 - 不完全・破損データは破棄し再生成する。
-- キャッシュ生成中は一時ディレクトリへ出力し、完了後に置換する。
-- 各 precompute phase の進捗値を公開する。
+- キャッシュ生成中は同じディレクトリの一時ファイルへ出力し、完了後に置換する。
+- 現行ファイルはヘッダにmagic / version / format / 各LUT寸法 / parameter hashを記録し、Transmittance、Direct Irradiance、Irradiance累積、Single Rayleigh、Single Mie、Scattering累積を格納する。
 
 ## 6. RenderSystem
 
@@ -312,7 +313,11 @@ SolarIntensity=20
 ### 9.1 GPU Timestamp
 
 次の scope を記録する。
-- Static LUT precompute
+- Static LUT precompute total
+- Transmittance
+- Direct Irradiance
+- Single Scattering
+- Multiple Scattering
 - Sky View sample generation
 - Blend
 - Desktop render
@@ -363,6 +368,7 @@ CPU 計測は次を分ける。
 - Static LUT cache load / invalidation。
 - Timestamp query の非同期回収。
 - B vs D の MAE / RMSE。
+- 現行Aは3D scattering LUTの直接参照、B/DはSky View LUTを経由するため、A vs Dの誤差も併記する。
 
 ### 11.3 Integration Test
 
