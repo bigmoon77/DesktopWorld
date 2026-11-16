@@ -5,6 +5,9 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +16,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace desktopworld
 {
@@ -441,6 +445,181 @@ namespace desktopworld
             return cache_directory / file_name.str();
         }
 
+
+        float half_to_float(const std::uint16_t value)
+        {
+            const std::uint32_t sign =
+                static_cast<std::uint32_t>(value & 0x8000U) << 16U;
+            std::uint32_t exponent = (value >> 10U) & 0x1FU;
+            std::uint32_t mantissa = value & 0x03FFU;
+            std::uint32_t bits = sign;
+
+            if (exponent == 0)
+            {
+                if (mantissa != 0)
+                {
+                    int normalized_exponent = -14;
+                    while ((mantissa & 0x0400U) == 0)
+                    {
+                        mantissa <<= 1U;
+                        --normalized_exponent;
+                    }
+
+                    mantissa &= 0x03FFU;
+                    const std::uint32_t float_exponent =
+                        static_cast<std::uint32_t>(normalized_exponent + 127);
+                    bits |= (float_exponent << 23U) | (mantissa << 13U);
+                }
+            }
+            else if (exponent == 0x1FU)
+            {
+                bits |= 0x7F800000U | (mantissa << 13U);
+            }
+            else
+            {
+                exponent = exponent - 15U + 127U;
+                bits |= (exponent << 23U) | (mantissa << 13U);
+            }
+
+            return std::bit_cast<float>(bits);
+        }
+
+        bool read_texture_rgb16f_pixels(
+            ID3D11Device* device,
+            ID3D11DeviceContext* context,
+            ID3D11Texture2D* texture,
+            std::vector<float>& pixels,
+            unsigned int& width,
+            unsigned int& height)
+        {
+            if (device == nullptr || context == nullptr || texture == nullptr)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC description{};
+            texture->GetDesc(&description);
+            if (description.Format != lut_format ||
+                description.SampleDesc.Count != 1 ||
+                description.Width == 0 ||
+                description.Height == 0)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC staging_description = description;
+            staging_description.Usage = D3D11_USAGE_STAGING;
+            staging_description.BindFlags = 0;
+            staging_description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            staging_description.MiscFlags = 0;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> staging;
+            if (FAILED(device->CreateTexture2D(
+                &staging_description,
+                nullptr,
+                staging.GetAddressOf())))
+            {
+                return false;
+            }
+
+            context->CopyResource(staging.Get(), texture);
+
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (FAILED(context->Map(
+                staging.Get(),
+                0,
+                D3D11_MAP_READ,
+                0,
+                &mapped)))
+            {
+                return false;
+            }
+
+            const std::size_t pixel_count =
+                static_cast<std::size_t>(description.Width) *
+                static_cast<std::size_t>(description.Height);
+            std::vector<float> output(pixel_count * 3U);
+
+            for (std::uint32_t y = 0; y < description.Height; ++y)
+            {
+                const auto* row = reinterpret_cast<const std::uint16_t*>(
+                    static_cast<const unsigned char*>(mapped.pData) +
+                    static_cast<std::size_t>(y) * mapped.RowPitch);
+
+                for (std::uint32_t x = 0; x < description.Width; ++x)
+                {
+                    const std::size_t source_index =
+                        static_cast<std::size_t>(x) * 4U;
+                    const std::size_t destination_index =
+                        (static_cast<std::size_t>(y) * description.Width + x) * 3U;
+
+                    output[destination_index] = half_to_float(row[source_index]);
+                    output[destination_index + 1U] = half_to_float(row[source_index + 1U]);
+                    output[destination_index + 2U] = half_to_float(row[source_index + 2U]);
+                }
+            }
+
+            context->Unmap(staging.Get(), 0);
+
+            pixels = std::move(output);
+            width = description.Width;
+            height = description.Height;
+            return true;
+        }
+
+        bool calculate_quality_metrics(
+            const std::vector<float>& reference,
+            const std::vector<float>& candidate,
+            const unsigned int width,
+            const unsigned int height,
+            sky_quality_metrics& result)
+        {
+            if (width == 0 || height == 0 ||
+                reference.empty() ||
+                reference.size() != candidate.size() ||
+                reference.size() % 3U != 0)
+            {
+                return false;
+            }
+
+            double absolute_error_sum = 0.0;
+            double squared_error_sum = 0.0;
+            double maximum_absolute_error = 0.0;
+
+            for (std::size_t index = 0; index < reference.size(); ++index)
+            {
+                const float reference_value = reference[index];
+                const float candidate_value = candidate[index];
+                if (!std::isfinite(reference_value) ||
+                    !std::isfinite(candidate_value))
+                {
+                    return false;
+                }
+
+                const double difference =
+                    std::abs(static_cast<double>(reference_value) -
+                        static_cast<double>(candidate_value));
+                absolute_error_sum += difference;
+                squared_error_sum += difference * difference;
+                maximum_absolute_error =
+                    std::max(maximum_absolute_error, difference);
+            }
+
+            const double component_count =
+                static_cast<double>(reference.size());
+            result.mean_absolute_error =
+                absolute_error_sum / component_count;
+            result.root_mean_squared_error =
+                std::sqrt(squared_error_sum / component_count);
+            result.maximum_absolute_error = maximum_absolute_error;
+            result.pixel_count =
+                static_cast<std::uint64_t>(width) * height;
+            result.width = width;
+            result.height = height;
+            result.valid = true;
+            return true;
+        }
+
         void swap_com_ptr(
             Microsoft::WRL::ComPtr<ID3D11Texture2D>& a,
             Microsoft::WRL::ComPtr<ID3D11Texture2D>& b)
@@ -504,6 +683,10 @@ namespace desktopworld
         {
             _context->ClearState();
         }
+
+        _quality_reference_uav.Reset();
+        _quality_reference_srv.Reset();
+        _quality_reference_texture.Reset();
 
         _sky_current_uav.Reset();
         _sky_current_srv.Reset();
@@ -575,6 +758,8 @@ namespace desktopworld
         _current_ps.Reset();
         _pair_ps.Reset();
         _final_ps.Reset();
+        _direct_radiance_ps.Reset();
+        _final_radiance_ps.Reset();
 
         _context.Reset();
         _device.Reset();
@@ -877,6 +1062,303 @@ namespace desktopworld
         return _profiler.poll(result);
     }
 
+
+    bool atmosphere_renderer::render_hdr_target(
+        ID3D11RenderTargetView* target,
+        const unsigned int width,
+        const unsigned int height,
+        const solar_state& sun,
+        const float blend_factor,
+        ID3D11PixelShader* pixel_shader)
+    {
+        if (!_initialized || target == nullptr || pixel_shader == nullptr ||
+            width == 0 || height == 0)
+        {
+            return false;
+        }
+
+        update_constant_buffers(sun, blend_factor);
+
+        D3D11_VIEWPORT viewport{};
+        viewport.Width = static_cast<float>(width);
+        viewport.Height = static_cast<float>(height);
+        viewport.MinDepth = 0.0f;
+        viewport.MaxDepth = 1.0f;
+
+        _context->OMSetRenderTargets(1, &target, nullptr);
+        _context->OMSetDepthStencilState(nullptr, 0);
+        _context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFFU);
+        _context->RSSetViewports(1, &viewport);
+        _context->RSSetState(_rasterizer_state.Get());
+        _context->IASetInputLayout(nullptr);
+        _context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        _context->VSSetShader(_fullscreen_vs.Get(), nullptr, 0);
+
+        ID3D11Buffer* constant_buffers[] =
+        {
+            _frame_cb.Get(),
+            _atmosphere_cb.Get()
+        };
+        _context->PSSetConstantBuffers(0, 2, constant_buffers);
+
+        ID3D11SamplerState* linear_sampler = _linear_sampler.Get();
+        ID3D11SamplerState* clamp_sampler = _clamp_sampler.Get();
+        _context->PSSetSamplers(0, 1, &linear_sampler);
+        _context->PSSetSamplers(1, 1, &clamp_sampler);
+
+        ID3D11ShaderResourceView* resources[11] =
+        {
+            _transmittance_srv.Get(),
+            _single_rayleigh_srv.Get(),
+            _single_mie_srv.Get(),
+            _delta_multiple_srv.Get(),
+            _irradiance_sum_a_srv.Get(),
+            _scattering_density_srv.Get(),
+            _sky_a_srv.Get(),
+            _sky_b_srv.Get(),
+            _sky_current_srv.Get(),
+            _scattering_sum_a_srv.Get(),
+            _single_mie_srv.Get()
+        };
+        _context->PSSetShaderResources(0, 11, resources);
+        _context->PSSetShader(pixel_shader, nullptr, 0);
+        _context->Draw(3, 0);
+
+        ID3D11ShaderResourceView* null_resources[11]{};
+        _context->PSSetShaderResources(0, 11, null_resources);
+        _context->OMSetRenderTargets(0, nullptr, nullptr);
+        return true;
+    }
+
+    bool atmosphere_renderer::analyze_quality(
+        const solar_state& sample_a,
+        const solar_state& sample_b,
+        const solar_state& current,
+        const float blend_factor,
+        const unsigned int output_width,
+        const unsigned int output_height,
+        sky_quality_metrics& blend_metrics,
+        sky_quality_metrics& direct_metrics)
+    {
+        blend_metrics = {};
+        direct_metrics = {};
+
+        if (!_initialized || !_static_luts_valid ||
+            output_width == 0 || output_height == 0)
+        {
+            return false;
+        }
+
+        generate_sky_view(_sky_a_uav.Get(), sample_a);
+        generate_sky_view(_sky_b_uav.Get(), sample_b);
+        generate_sky_view(_quality_reference_uav.Get(), current);
+        blend_sky_views(blend_factor);
+
+        std::vector<float> current_reference;
+        std::vector<float> interpolated;
+        unsigned int reference_width = 0;
+        unsigned int reference_height = 0;
+        unsigned int interpolated_width = 0;
+        unsigned int interpolated_height = 0;
+
+        if (!read_texture_rgb16f_pixels(
+                _device.Get(),
+                _context.Get(),
+                _quality_reference_texture.Get(),
+                current_reference,
+                reference_width,
+                reference_height) ||
+            !read_texture_rgb16f_pixels(
+                _device.Get(),
+                _context.Get(),
+                _sky_current_texture.Get(),
+                interpolated,
+                interpolated_width,
+                interpolated_height) ||
+            reference_width != interpolated_width ||
+            reference_height != interpolated_height ||
+            !calculate_quality_metrics(
+                current_reference,
+                interpolated,
+                reference_width,
+                reference_height,
+                blend_metrics))
+        {
+            return false;
+        }
+
+        double scale = 1.0;
+        scale = std::min(
+            scale,
+            1920.0 / static_cast<double>(output_width));
+        scale = std::min(
+            scale,
+            1080.0 / static_cast<double>(output_height));
+
+        const unsigned int analysis_width = std::max(
+            1U,
+            static_cast<unsigned int>(
+                std::floor(static_cast<double>(output_width) * scale)));
+        const unsigned int analysis_height = std::max(
+            1U,
+            static_cast<unsigned int>(
+                std::floor(static_cast<double>(output_height) * scale)));
+
+        const auto render_to_pixels =
+            [&](ID3D11PixelShader* pixel_shader,
+                std::vector<float>& pixels) -> bool
+        {
+            D3D11_TEXTURE2D_DESC description{};
+            description.Width = analysis_width;
+            description.Height = analysis_height;
+            description.MipLevels = 1;
+            description.ArraySize = 1;
+            description.Format = lut_format;
+            description.SampleDesc.Count = 1;
+            description.Usage = D3D11_USAGE_DEFAULT;
+            description.BindFlags = D3D11_BIND_RENDER_TARGET;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+            Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+            if (FAILED(_device->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    texture.GetAddressOf())) ||
+                FAILED(_device->CreateRenderTargetView(
+                    texture.Get(),
+                    nullptr,
+                    target.GetAddressOf())))
+            {
+                return false;
+            }
+
+            if (!render_hdr_target(
+                target.Get(),
+                analysis_width,
+                analysis_height,
+                current,
+                blend_factor,
+                pixel_shader))
+            {
+                return false;
+            }
+
+            unsigned int read_width = 0;
+            unsigned int read_height = 0;
+            return read_texture_rgb16f_pixels(
+                _device.Get(),
+                _context.Get(),
+                texture.Get(),
+                pixels,
+                read_width,
+                read_height) &&
+                read_width == analysis_width &&
+                read_height == analysis_height;
+        };
+
+        std::vector<float> direct_pixels;
+        std::vector<float> blended_pixels;
+        if (!render_to_pixels(_direct_radiance_ps.Get(), direct_pixels) ||
+            !render_to_pixels(_final_radiance_ps.Get(), blended_pixels) ||
+            !calculate_quality_metrics(
+                direct_pixels,
+                blended_pixels,
+                analysis_width,
+                analysis_height,
+                direct_metrics))
+        {
+            return false;
+        }
+
+        if (_render_method == render_method::sky_current)
+        {
+            generate_sky_view(_sky_current_uav.Get(), current);
+        }
+
+        return true;
+    }
+
+    bool atmosphere_renderer::capture_sky_pfm(
+        const std::filesystem::path& path,
+        const solar_state& sample_a,
+        const solar_state& sample_b,
+        const solar_state& current,
+        const float blend_factor)
+    {
+        if (!_initialized || !_static_luts_valid || path.empty())
+        {
+            return false;
+        }
+
+        if (_render_method == render_method::direct ||
+            _render_method == render_method::sky_current)
+        {
+            generate_sky_view(_sky_current_uav.Get(), current);
+        }
+        else
+        {
+            generate_sky_view(_sky_a_uav.Get(), sample_a);
+            generate_sky_view(_sky_b_uav.Get(), sample_b);
+            blend_sky_views(blend_factor);
+        }
+
+        std::vector<float> pixels;
+        unsigned int width = 0;
+        unsigned int height = 0;
+        if (!read_texture_rgb16f_pixels(
+            _device.Get(),
+            _context.Get(),
+            _sky_current_texture.Get(),
+            pixels,
+            width,
+            height))
+        {
+            return false;
+        }
+
+        std::error_code directory_error;
+        if (!path.parent_path().empty())
+        {
+            std::filesystem::create_directories(
+                path.parent_path(),
+                directory_error);
+            if (directory_error)
+            {
+                return false;
+            }
+        }
+
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        if (!file.is_open())
+        {
+            return false;
+        }
+
+        file << "PF\n" << width << " " << height << "\n-1.0\n";
+        if (!file.good())
+        {
+            return false;
+        }
+
+        for (unsigned int row = height; row > 0; --row)
+        {
+            const unsigned int y = row - 1U;
+            const std::size_t row_offset =
+                static_cast<std::size_t>(y) * width * 3U;
+            const std::size_t row_bytes =
+                static_cast<std::size_t>(width) * 3U * sizeof(float);
+            file.write(
+                reinterpret_cast<const char*>(pixels.data() + row_offset),
+                static_cast<std::streamsize>(row_bytes));
+            if (!file.good())
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     bool atmosphere_renderer::create_shaders(const wchar_t* shader_path)
     {
         const std::filesystem::path path =
@@ -973,7 +1455,9 @@ namespace desktopworld
         if (!create_pixel("PS_Direct", _direct_ps.GetAddressOf()) ||
             !create_pixel("PS_SkyCurrent", _current_ps.GetAddressOf()) ||
             !create_pixel("PS_SkyPair", _pair_ps.GetAddressOf()) ||
-            !create_pixel("PS_SkyFinal", _final_ps.GetAddressOf()))
+            !create_pixel("PS_SkyFinal", _final_ps.GetAddressOf()) ||
+            !create_pixel("PS_DirectRadiance", _direct_radiance_ps.GetAddressOf()) ||
+            !create_pixel("PS_SkyFinalRadiance", _final_radiance_ps.GetAddressOf()))
         {
             return false;
         }
@@ -1063,7 +1547,13 @@ namespace desktopworld
                 sky_height,
                 _sky_current_texture.GetAddressOf(),
                 _sky_current_srv.GetAddressOf(),
-                _sky_current_uav.GetAddressOf());
+                _sky_current_uav.GetAddressOf()) &&
+            create_render_target(
+                sky_width,
+                sky_height,
+                _quality_reference_texture.GetAddressOf(),
+                _quality_reference_srv.GetAddressOf(),
+                _quality_reference_uav.GetAddressOf());
     }
 
     bool atmosphere_renderer::create_static_scattering_textures()
