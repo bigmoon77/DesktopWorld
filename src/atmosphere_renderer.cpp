@@ -1060,16 +1060,12 @@ namespace desktopworld
                 0.0f,
                 scattering_order);
 
-            ID3D11ShaderResourceView* multiple_inputs[] =
-            {
-                _transmittance_srv.Get(),
-                _single_rayleigh_srv.Get(),
-                _single_mie_srv.Get(),
-                _delta_multiple_srv.Get(),
-                _delta_irradiance_srv.Get(),
-                _scattering_density_srv.Get()
-            };
-            _context->CSSetShaderResources(0, 6, multiple_inputs);
+            ID3D11ShaderResourceView* transmittance_input =
+                _transmittance_srv.Get();
+            ID3D11ShaderResourceView* density_input =
+                _scattering_density_srv.Get();
+            _context->CSSetShaderResources(0, 1, &transmittance_input);
+            _context->CSSetShaderResources(5, 1, &density_input);
             _context->CSSetSamplers(1, 1, &sampler);
 
             ID3D11UnorderedAccessView* multiple_output =
