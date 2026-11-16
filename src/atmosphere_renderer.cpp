@@ -5,10 +5,13 @@
 
 #include <algorithm>
 #include <array>
-#include <fstream>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace desktopworld
@@ -623,6 +626,8 @@ namespace desktopworld
             return true;
         }
 
+        _static_luts_valid = false;
+
         atmosphere_constants constants{};
         set_float3(constants.rayleigh_scattering, validated.rayleigh_scattering);
         constants.planet_radius_km = validated.planet_radius_km;
@@ -652,10 +657,18 @@ namespace desktopworld
             0,
             0);
 
+        if (load_static_cache(parameter_hash))
+        {
+            _static_parameter_hash = parameter_hash;
+            _static_luts_valid = true;
+            return true;
+        }
+
         _profiler.begin_scope(gpu_profile_scope::precompute);
         generate_static_luts();
         _profiler.end_scope(gpu_profile_scope::precompute);
 
+        save_static_cache(parameter_hash);
         _static_parameter_hash = parameter_hash;
         _static_luts_valid = true;
         return true;
@@ -1240,6 +1253,189 @@ namespace desktopworld
             _atmosphere_cb.Get()
         };
         _context->CSSetConstantBuffers(0, 2, buffers);
+    }
+
+    bool atmosphere_renderer::load_static_cache(
+        const std::uint64_t parameter_hash)
+    {
+        const std::filesystem::path cache_path =
+            get_static_cache_path(parameter_hash);
+        if (cache_path.empty())
+        {
+            return false;
+        }
+
+        std::ifstream file(cache_path, std::ios::binary);
+        if (!file.is_open())
+        {
+            return false;
+        }
+
+        static_cache_header header{};
+        file.read(
+            reinterpret_cast<char*>(&header),
+            static_cast<std::streamsize>(sizeof(header)));
+
+        const bool header_valid =
+            file.good() &&
+            std::memcmp(header.magic, "DWLUT001", 8) == 0 &&
+            header.version == 1 &&
+            header.format == static_cast<std::uint32_t>(lut_format) &&
+            header.parameter_hash == parameter_hash &&
+            header.transmittance_width == transmittance_width &&
+            header.transmittance_height == transmittance_height &&
+            header.irradiance_width == irradiance_width &&
+            header.irradiance_height == irradiance_height &&
+            header.scattering_width == scattering_width &&
+            header.scattering_height == scattering_height &&
+            header.scattering_depth == scattering_depth;
+
+        if (!header_valid)
+        {
+            file.close();
+            DeleteFileW(cache_path.c_str());
+            return false;
+        }
+
+        bool success =
+            read_texture_2d(
+                _device.Get(),
+                _context.Get(),
+                _transmittance_texture.Get(),
+                file) &&
+            read_texture_2d(
+                _device.Get(),
+                _context.Get(),
+                _direct_irradiance_texture.Get(),
+                file) &&
+            read_texture_2d(
+                _device.Get(),
+                _context.Get(),
+                _irradiance_sum_a_texture.Get(),
+                file) &&
+            read_texture_3d(
+                _device.Get(),
+                _context.Get(),
+                _single_rayleigh_texture.Get(),
+                file) &&
+            read_texture_3d(
+                _device.Get(),
+                _context.Get(),
+                _single_mie_texture.Get(),
+                file) &&
+            read_texture_3d(
+                _device.Get(),
+                _context.Get(),
+                _scattering_sum_a_texture.Get(),
+                file);
+
+        if (success)
+        {
+            success = file.peek() == std::char_traits<char>::eof();
+        }
+
+        file.close();
+
+        if (!success)
+        {
+            DeleteFileW(cache_path.c_str());
+            return false;
+        }
+
+        return true;
+    }
+
+    bool atmosphere_renderer::save_static_cache(
+        const std::uint64_t parameter_hash)
+    {
+        const std::filesystem::path cache_path =
+            get_static_cache_path(parameter_hash);
+        if (cache_path.empty())
+        {
+            return false;
+        }
+
+        std::filesystem::path temporary_path = cache_path;
+        temporary_path += L".tmp";
+
+        std::ofstream file(
+            temporary_path,
+            std::ios::binary | std::ios::trunc);
+        if (!file.is_open())
+        {
+            return false;
+        }
+
+        static_cache_header header{};
+        std::memcpy(header.magic, "DWLUT001", 8);
+        header.version = 1;
+        header.format = static_cast<std::uint32_t>(lut_format);
+        header.transmittance_width = transmittance_width;
+        header.transmittance_height = transmittance_height;
+        header.irradiance_width = irradiance_width;
+        header.irradiance_height = irradiance_height;
+        header.scattering_width = scattering_width;
+        header.scattering_height = scattering_height;
+        header.scattering_depth = scattering_depth;
+        header.parameter_hash = parameter_hash;
+
+        file.write(
+            reinterpret_cast<const char*>(&header),
+            static_cast<std::streamsize>(sizeof(header)));
+
+        bool success = file.good() &&
+            write_texture_2d(
+                _device.Get(),
+                _context.Get(),
+                _transmittance_texture.Get(),
+                file) &&
+            write_texture_2d(
+                _device.Get(),
+                _context.Get(),
+                _direct_irradiance_texture.Get(),
+                file) &&
+            write_texture_2d(
+                _device.Get(),
+                _context.Get(),
+                _irradiance_sum_a_texture.Get(),
+                file) &&
+            write_texture_3d(
+                _device.Get(),
+                _context.Get(),
+                _single_rayleigh_texture.Get(),
+                file) &&
+            write_texture_3d(
+                _device.Get(),
+                _context.Get(),
+                _single_mie_texture.Get(),
+                file) &&
+            write_texture_3d(
+                _device.Get(),
+                _context.Get(),
+                _scattering_sum_a_texture.Get(),
+                file);
+
+        file.flush();
+        success = success && file.good();
+        file.close();
+        success = success && !file.fail();
+
+        if (!success)
+        {
+            DeleteFileW(temporary_path.c_str());
+            return false;
+        }
+
+        if (!MoveFileExW(
+            temporary_path.c_str(),
+            cache_path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            DeleteFileW(temporary_path.c_str());
+            return false;
+        }
+
+        return true;
     }
 
     void atmosphere_renderer::generate_static_luts()
