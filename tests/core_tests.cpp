@@ -278,7 +278,12 @@ namespace
         input.fixed_fps = 23.0f;
         input.sample_interval_override_seconds = 1800;
         input.atmosphere.mie_scattering.y = 0.00725f;
+        input.atmosphere.mie_extinction.z = 0.00512f;
         input.atmosphere.mie_g = 0.87f;
+        input.atmosphere.ozone_absorption.y = 0.00212f;
+        input.atmosphere.ozone_center_height_km = 27.0f;
+        input.atmosphere.ground_albedo.z = 0.35f;
+        input.atmosphere.max_scattering_order = 3;
 
         assert(store.save(input));
 
@@ -298,6 +303,24 @@ namespace
             output.atmosphere.mie_g,
             input.atmosphere.mie_g,
             1.0e-6));
+        assert(nearly_equal(
+            output.atmosphere.mie_extinction.z,
+            input.atmosphere.mie_extinction.z,
+            1.0e-6));
+        assert(nearly_equal(
+            output.atmosphere.ozone_absorption.y,
+            input.atmosphere.ozone_absorption.y,
+            1.0e-6));
+        assert(nearly_equal(
+            output.atmosphere.ozone_center_height_km,
+            input.atmosphere.ozone_center_height_km,
+            1.0e-6));
+        assert(nearly_equal(
+            output.atmosphere.ground_albedo.z,
+            input.atmosphere.ground_albedo.z,
+            1.0e-6));
+        assert(output.atmosphere.max_scattering_order ==
+            input.atmosphere.max_scattering_order);
 
         DeleteFileW(settings_path.c_str());
         DeleteFileW(temporary_settings_path.c_str());
