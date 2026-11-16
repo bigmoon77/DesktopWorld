@@ -789,7 +789,7 @@ int main(int argc, char** argv)
             }
 
             atmosphere_cache_key += line;
-            atmosphere_cache_key.push_back('\\n');
+            atmosphere_cache_key.push_back('\n');
         }
     }
 
