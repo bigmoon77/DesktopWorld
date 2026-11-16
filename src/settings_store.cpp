@@ -3,6 +3,8 @@
 #include <ShlObj.h>
 
 #include <algorithm>
+#include <climits>
+#include <iterator>
 #include <cmath>
 #include <cwchar>
 #include <iomanip>
