@@ -284,16 +284,25 @@ Longitude=139.7671
 Method=3
 FrameMode=0
 BaseFps=2
+FixedFps=2
 TwilightFps=15
 SampleIntervalMode=0
 Exposure=1.0
 
 [Atmosphere]
-RayleighScaleHeightKm=8.0
+PlanetRadiusKm=6360
+AtmosphereHeightKm=100
+RayleighR=0.005802
+RayleighG=0.013558
+RayleighB=0.033100
+MieScatteringR=0.003996
+MieScatteringG=0.003996
+MieScatteringB=0.003996
+RayleighScaleHeightKm=8
 MieScaleHeightKm=1.2
-MieG=0.8
-; P1: ground albedo and scattering order are added with the multi-scattering model
-
+MieAnisotropyG=0.8
+SolarIntensity=20
+; P1 additions: GroundAlbedoR/G/B, ozone density profile, MaxScatteringOrder
 ~~~
 
 全値は読み込み時に検証する。欠落キーは既定値で補完し、範囲外値はクランプまたは既定値へ戻す。保存は一時ファイルへ書き出した後に置換する。
