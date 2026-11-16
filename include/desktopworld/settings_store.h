@@ -26,6 +26,9 @@ namespace desktopworld
     class settings_store
     {
     public:
+        settings_store() = default;
+        explicit settings_store(std::filesystem::path path);
+
         bool load(app_settings& settings);
         bool save(const app_settings& settings) const;
 
