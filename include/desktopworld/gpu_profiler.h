@@ -39,7 +39,7 @@ namespace desktopworld
         void end_scope(gpu_profile_scope scope);
         void end_frame();
 
-        bool poll(gpu_profile_result& result) const;
+        bool poll(gpu_profile_result& result);
         bool is_initialized() const;
 
     private:
