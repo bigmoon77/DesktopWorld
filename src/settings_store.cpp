@@ -67,11 +67,6 @@ namespace desktopworld
             read_double(L"Location", L"Longitude", settings.longitude),
             -180.0,
             180.0);
-        settings.altitude_meters = std::clamp(
-            read_double(L"Location", L"AltitudeMeters", settings.altitude_meters),
-            -500.0,
-            10000.0);
-
         const int method = read_integer(
             L"Rendering", L"Method", static_cast<int>(settings.method));
         if (is_valid_method(method))
@@ -136,15 +131,15 @@ namespace desktopworld
             0.0,
             0.1));
         settings.atmosphere.mie_scattering.x = static_cast<float>(std::clamp(
-            read_double(L"Atmosphere", L"MieR", settings.atmosphere.mie_scattering.x),
+            read_double(L"Atmosphere", L"MieScatteringR", settings.atmosphere.mie_scattering.x),
             0.0,
             0.1));
         settings.atmosphere.mie_scattering.y = static_cast<float>(std::clamp(
-            read_double(L"Atmosphere", L"MieG", settings.atmosphere.mie_scattering.y),
+            read_double(L"Atmosphere", L"MieScatteringG", settings.atmosphere.mie_scattering.y),
             0.0,
             0.1));
         settings.atmosphere.mie_scattering.z = static_cast<float>(std::clamp(
-            read_double(L"Atmosphere", L"MieB", settings.atmosphere.mie_scattering.z),
+            read_double(L"Atmosphere", L"MieScatteringB", settings.atmosphere.mie_scattering.z),
             0.0,
             0.1));
 
@@ -163,7 +158,7 @@ namespace desktopworld
             0.1,
             50.0));
         settings.atmosphere.mie_g = static_cast<float>(std::clamp(
-            read_double(L"Atmosphere", L"MieG", settings.atmosphere.mie_g),
+            read_double(L"Atmosphere", L"MieAnisotropyG", settings.atmosphere.mie_g),
             -0.98,
             0.98));
         settings.atmosphere.solar_intensity = static_cast<float>(std::clamp(
@@ -191,23 +186,39 @@ namespace desktopworld
             return false;
         }
 
+        std::filesystem::path temporary_path = _path;
+        temporary_path += L".tmp";
+        DeleteFileW(temporary_path.c_str());
+
         bool success = true;
+        const auto write_string = [&](const wchar_t* section,
+            const wchar_t* key,
+            const std::wstring& value)
+        {
+            success = WritePrivateProfileStringW(
+                section,
+                key,
+                value.c_str(),
+                temporary_path.c_str()) != FALSE && success;
+        };
         const auto write_double = [&](const wchar_t* section,
             const wchar_t* key,
             const double value)
         {
-            success = write_string(section, key, format_double(value)) && success;
+            std::wostringstream stream;
+            stream.imbue(std::locale::classic());
+            stream << std::setprecision(10) << value;
+            write_string(section, key, stream.str());
         };
         const auto write_integer = [&](const wchar_t* section,
             const wchar_t* key,
             const int value)
         {
-            success = write_string(section, key, std::to_wstring(value)) && success;
+            write_string(section, key, std::to_wstring(value));
         };
 
         write_double(L"Location", L"Latitude", settings.latitude);
         write_double(L"Location", L"Longitude", settings.longitude);
-        write_double(L"Location", L"AltitudeMeters", settings.altitude_meters);
 
         write_integer(L"Rendering", L"Method", static_cast<int>(settings.method));
         write_integer(
@@ -245,15 +256,15 @@ namespace desktopworld
             settings.atmosphere.rayleigh_scattering.z);
         write_double(
             L"Atmosphere",
-            L"MieR",
+            L"MieScatteringR",
             settings.atmosphere.mie_scattering.x);
         write_double(
             L"Atmosphere",
-            L"MieG",
+            L"MieScatteringG",
             settings.atmosphere.mie_scattering.y);
         write_double(
             L"Atmosphere",
-            L"MieB",
+            L"MieScatteringB",
             settings.atmosphere.mie_scattering.z);
         write_double(
             L"Atmosphere",
@@ -265,14 +276,34 @@ namespace desktopworld
             settings.atmosphere.mie_scale_height_km);
         write_double(
             L"Atmosphere",
-            L"MieG",
+            L"MieAnisotropyG",
             settings.atmosphere.mie_g);
         write_double(
             L"Atmosphere",
             L"SolarIntensity",
             settings.atmosphere.solar_intensity);
 
-        return success;
+        if (!success)
+        {
+            WritePrivateProfileStringW(
+                nullptr, nullptr, nullptr, temporary_path.c_str());
+            DeleteFileW(temporary_path.c_str());
+            return false;
+        }
+
+        WritePrivateProfileStringW(
+            nullptr, nullptr, nullptr, temporary_path.c_str());
+
+        if (!MoveFileExW(
+            temporary_path.c_str(),
+            _path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            DeleteFileW(temporary_path.c_str());
+            return false;
+        }
+
+        return true;
     }
 
     const std::filesystem::path& settings_store::path() const
