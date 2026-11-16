@@ -1,5 +1,7 @@
 #include "desktopworld/environment_controller.h"
 #include "desktopworld/frame_controller.h"
+#include "desktopworld/render_system.h"
+#include "desktopworld/settings_store.h"
 #include "desktopworld/solar_model.h"
 #include "desktopworld/time_sample_scheduler.h"
 
@@ -11,8 +13,11 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace
 {
@@ -172,6 +177,133 @@ namespace
         assert(manual_interval.sample_window.interval_seconds == 900);
     }
 
+    class test_render_pass final : public desktopworld::render_pass
+    {
+    public:
+        test_render_pass(const int id, std::vector<int>& events)
+            : _id(id), _events(&events)
+        {
+        }
+
+        bool initialize() override
+        {
+            _events->push_back(10 + _id);
+            return true;
+        }
+
+        void resize(unsigned int, unsigned int) override
+        {
+            _events->push_back(20 + _id);
+        }
+
+        bool execute(const desktopworld::render_context&) override
+        {
+            _events->push_back(30 + _id);
+            return true;
+        }
+
+        void shutdown() override
+        {
+            _events->push_back(40 + _id);
+        }
+
+    private:
+        int _id = 0;
+        std::vector<int>* _events = nullptr;
+    };
+
+    void test_render_system()
+    {
+        std::vector<int> events;
+        desktopworld::render_system renderer;
+
+        assert(renderer.add_pass(
+            std::make_unique<test_render_pass>(1, events)));
+        assert(renderer.add_pass(
+            std::make_unique<test_render_pass>(2, events)));
+        assert(!renderer.add_pass(nullptr));
+        assert(renderer.pass_count() == 2);
+
+        assert(renderer.initialize());
+        renderer.resize(1920, 1080);
+
+        desktopworld::render_context context{};
+        assert(renderer.execute(context));
+        renderer.shutdown();
+        assert(!renderer.is_initialized());
+
+        const std::vector<int> expected =
+        {
+            11, 12,
+            21, 22,
+            31, 32,
+            42, 41
+        };
+        assert(events == expected);
+    }
+
+    void test_settings_store()
+    {
+        wchar_t temporary_directory[MAX_PATH]{};
+        const DWORD path_length = GetTempPathW(
+            static_cast<DWORD>(std::size(temporary_directory)),
+            temporary_directory);
+        assert(path_length > 0);
+        assert(path_length < std::size(temporary_directory));
+
+        const std::filesystem::path test_directory =
+            std::filesystem::path(temporary_directory) /
+            (L"DesktopWorldCoreTests_" +
+                std::to_wstring(GetCurrentProcessId()));
+
+        if (!CreateDirectoryW(test_directory.c_str(), nullptr))
+        {
+            assert(GetLastError() == ERROR_ALREADY_EXISTS);
+        }
+
+        const std::filesystem::path settings_path =
+            test_directory / L"settings.ini";
+        const std::filesystem::path temporary_settings_path =
+            std::filesystem::path(settings_path.native() + L".tmp");
+
+        DeleteFileW(settings_path.c_str());
+        DeleteFileW(temporary_settings_path.c_str());
+
+        desktopworld::settings_store store(settings_path);
+        desktopworld::app_settings input{};
+        input.latitude = -33.8688;
+        input.longitude = 151.2093;
+        input.method = desktopworld::render_method::sky_blend_pixel;
+        input.frame_update_mode = desktopworld::frame_mode::fixed;
+        input.fixed_fps = 23.0f;
+        input.sample_interval_override_seconds = 1800;
+        input.atmosphere.mie_scattering.y = 0.00725f;
+        input.atmosphere.mie_g = 0.87f;
+
+        assert(store.save(input));
+
+        desktopworld::app_settings output{};
+        assert(store.load(output));
+        assert(nearly_equal(output.latitude, input.latitude, 1.0e-8));
+        assert(nearly_equal(output.longitude, input.longitude, 1.0e-8));
+        assert(output.method == input.method);
+        assert(output.frame_update_mode == input.frame_update_mode);
+        assert(nearly_equal(output.fixed_fps, input.fixed_fps, 1.0e-5));
+        assert(output.sample_interval_override_seconds == 1800);
+        assert(nearly_equal(
+            output.atmosphere.mie_scattering.y,
+            input.atmosphere.mie_scattering.y,
+            1.0e-6));
+        assert(nearly_equal(
+            output.atmosphere.mie_g,
+            input.atmosphere.mie_g,
+            1.0e-6));
+
+        DeleteFileW(settings_path.c_str());
+        DeleteFileW(temporary_settings_path.c_str());
+        RemoveDirectoryW(test_directory.c_str());
+    }
+
     void test_frame_controller()
     {
         using desktopworld::frame_controller;
@@ -210,6 +342,8 @@ int main()
     test_sample_intervals();
     test_sample_windows();
     test_environment_controller();
+    test_render_system();
+    test_settings_store();
     test_frame_controller();
 
     std::cout << "DesktopWorld core tests passed.\n";
