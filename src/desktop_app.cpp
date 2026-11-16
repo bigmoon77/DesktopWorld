@@ -2,7 +2,6 @@
 
 #include "desktopworld/atmosphere_renderer.h"
 #include "desktopworld/frame_controller.h"
-#include "desktopworld/solar_model.h"
 #include "desktopworld/types.h"
 #include "desktopworld/settings_store.h"
 #include "desktopworld/time_sample_scheduler.h"
@@ -46,16 +45,23 @@ namespace desktopworld
             value.LowPart = file_time.dwLowDateTime;
             value.HighPart = file_time.dwHighDateTime;
 
-            constexpr std::uint64_t windows_to_unix_seconds = 11644473600ULL;
-            return static_cast<std::int64_t>(
-                value.QuadPart / 10000000ULL - windows_to_unix_seconds);
+            constexpr std::int64_t windows_to_unix_seconds = 11644473600LL;
+            const std::int64_t file_time_seconds =
+                static_cast<std::int64_t>(value.QuadPart / 10000000ULL);
+            return file_time_seconds - windows_to_unix_seconds;
         }
 
         SYSTEMTIME unix_seconds_to_system_time(const std::int64_t seconds)
         {
-            constexpr std::uint64_t windows_to_unix_seconds = 11644473600ULL;
+            constexpr std::int64_t windows_to_unix_seconds = 11644473600LL;
+            constexpr std::int64_t maximum_unix_seconds = 253402300799LL;
+            const std::int64_t clamped_seconds = std::clamp(
+                seconds,
+                -windows_to_unix_seconds,
+                maximum_unix_seconds);
             const std::uint64_t ticks =
-                (static_cast<std::uint64_t>(seconds) + windows_to_unix_seconds) *
+                static_cast<std::uint64_t>(
+                    clamped_seconds + windows_to_unix_seconds) *
                 10000000ULL;
 
             ULARGE_INTEGER value{};
@@ -329,7 +335,11 @@ namespace desktopworld
         {
             settings.latitude = latitude;
             settings.longitude = longitude;
-            settings.method = atmosphere.get_render_method();
+            if (atmosphere.is_initialized())
+            {
+                settings.method = atmosphere.get_render_method();
+                settings.atmosphere = atmosphere.get_parameters();
+            }
             settings.frame_update_mode = frames.mode();
             settings.sample_interval_override_seconds =
                 sample_interval_override_seconds;
@@ -339,8 +349,6 @@ namespace desktopworld
             settings.fixed_fps = fixed_fps;
             settings.twilight_fps = twilight_fps;
 #endif
-            settings.atmosphere = atmosphere.get_parameters();
-
             if (!settings_storage.save(settings))
             {
                 OutputDebugStringW(
