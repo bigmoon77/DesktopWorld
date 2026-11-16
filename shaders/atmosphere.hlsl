@@ -1199,3 +1199,18 @@ float4 PS_SkyFinal(VertexOutput input) : SV_TARGET
         0).rgb;
     return float4(tone_map(radiance), 1.0);
 }
+
+float4 PS_DirectRadiance(VertexOutput input) : SV_TARGET
+{
+    const float3 direction = sky_view_direction(input.uv);
+    return float4(evaluate_sky_radiance(direction), 1.0);
+}
+
+float4 PS_SkyFinalRadiance(VertexOutput input) : SV_TARGET
+{
+    const float3 radiance = g_sky_current.SampleLevel(
+        g_linear_sampler,
+        input.uv,
+        0).rgb;
+    return float4(radiance, 1.0);
+}
