@@ -119,6 +119,7 @@ target_compile_options(desktopworld_core_tests PRIVATE
     /utf-8
     /Zc:__cplusplus
 )
+target_link_libraries(desktopworld_core_tests PRIVATE shell32)
 add_test(NAME desktopworld_core_tests COMMAND desktopworld_core_tests)
 
 add_executable(shader_validation tools/shader_validation.cpp)
