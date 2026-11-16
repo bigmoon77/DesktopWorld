@@ -67,12 +67,14 @@ target_link_libraries(desktopworld PRIVATE
     gdi32
     shell32
     shcore
+    dwmapi
+    imm32
 )
 
 add_custom_command(TARGET desktopworld POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders
-        ${CMAKE_CURRENT_BINARY_DIR}/shaders
+        $<TARGET_FILE_DIR:desktopworld>/shaders
 )
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT desktopworld)
