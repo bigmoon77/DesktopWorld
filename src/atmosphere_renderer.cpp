@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -1354,6 +1355,76 @@ namespace desktopworld
             {
                 return false;
             }
+        }
+
+        file.close();
+        if (!file.good())
+        {
+            return false;
+        }
+
+        std::filesystem::path metadata_path = path;
+        metadata_path.replace_extension(L".meta");
+        std::filesystem::path temporary_metadata_path = metadata_path;
+        temporary_metadata_path += L".tmp";
+
+        std::ofstream metadata_file(
+            temporary_metadata_path,
+            std::ios::out | std::ios::trunc);
+        if (!metadata_file.is_open())
+        {
+            std::error_code remove_error;
+            std::filesystem::remove(path, remove_error);
+            return false;
+        }
+
+        metadata_file << std::setprecision(
+            std::numeric_limits<float>::max_digits10);
+        metadata_file << "FormatVersion=1\\n";
+        metadata_file << "Width=" << width << "\\n";
+        metadata_file << "Height=" << height << "\\n";
+        metadata_file << "ViewMapping=sky_view_direction_v1\\n";
+        metadata_file << "RenderMethod=" << static_cast<unsigned int>(_render_method) << "\\n";
+        metadata_file << "BlendFactor=" << blend_factor << "\\n";
+        metadata_file << "SunDirectionX=" << current.direction.x << "\\n";
+        metadata_file << "SunDirectionY=" << current.direction.y << "\\n";
+        metadata_file << "SunDirectionZ=" << current.direction.z << "\\n";
+        metadata_file << "PlanetRadiusKm=" << _parameters.planet_radius_km << "\\n";
+        metadata_file << "AtmosphereHeightKm=" << _parameters.atmosphere_height_km << "\\n";
+        metadata_file << "RayleighScatteringR=" << _parameters.rayleigh_scattering.x << "\\n";
+        metadata_file << "RayleighScatteringG=" << _parameters.rayleigh_scattering.y << "\\n";
+        metadata_file << "RayleighScatteringB=" << _parameters.rayleigh_scattering.z << "\\n";
+        metadata_file << "RayleighScaleHeightKm=" << _parameters.rayleigh_scale_height_km << "\\n";
+        metadata_file << "MieScatteringR=" << _parameters.mie_scattering.x << "\\n";
+        metadata_file << "MieScatteringG=" << _parameters.mie_scattering.y << "\\n";
+        metadata_file << "MieScatteringB=" << _parameters.mie_scattering.z << "\\n";
+        metadata_file << "MieExtinctionR=" << _parameters.mie_extinction.x << "\\n";
+        metadata_file << "MieExtinctionG=" << _parameters.mie_extinction.y << "\\n";
+        metadata_file << "MieExtinctionB=" << _parameters.mie_extinction.z << "\\n";
+        metadata_file << "MieScaleHeightKm=" << _parameters.mie_scale_height_km << "\\n";
+        metadata_file << "MiePhaseFunctionG=" << _parameters.mie_g << "\\n";
+        metadata_file << "OzoneAbsorptionR=" << _parameters.ozone_absorption.x << "\\n";
+        metadata_file << "OzoneAbsorptionG=" << _parameters.ozone_absorption.y << "\\n";
+        metadata_file << "OzoneAbsorptionB=" << _parameters.ozone_absorption.z << "\\n";
+        metadata_file << "OzoneCenterHeightKm=" << _parameters.ozone_center_height_km << "\\n";
+        metadata_file << "OzoneHalfWidthKm=" << _parameters.ozone_half_width_km << "\\n";
+        metadata_file << "GroundAlbedoR=" << _parameters.ground_albedo.x << "\\n";
+        metadata_file << "GroundAlbedoG=" << _parameters.ground_albedo.y << "\\n";
+        metadata_file << "GroundAlbedoB=" << _parameters.ground_albedo.z << "\\n";
+        metadata_file << "SolarIntensity=" << _parameters.solar_intensity << "\\n";
+        metadata_file << "MaxScatteringOrder=" << _parameters.max_scattering_order << "\\n";
+        metadata_file.close();
+
+        if (!metadata_file.good() ||
+            !MoveFileExW(
+                temporary_metadata_path.c_str(),
+                metadata_path.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            std::error_code remove_error;
+            std::filesystem::remove(temporary_metadata_path, remove_error);
+            std::filesystem::remove(path, remove_error);
+            return false;
         }
 
         return true;
