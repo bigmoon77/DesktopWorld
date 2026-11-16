@@ -247,7 +247,7 @@ namespace desktopworld
 
         const auto create_compute = [&](const char* entry, ID3D11ComputeShader** shader) -> bool
         {
-            if (!compile_shader(path.c_str(), entry, "cs_5_0", bytecode.GetAddressOf()))
+            if (!compile_shader(path.c_str(), entry, "cs_5_0", bytecode.ReleaseAndGetAddressOf()))
             {
                 return false;
             }
@@ -260,7 +260,7 @@ namespace desktopworld
 
         const auto create_pixel = [&](const char* entry, ID3D11PixelShader** shader) -> bool
         {
-            if (!compile_shader(path.c_str(), entry, "ps_5_0", bytecode.GetAddressOf()))
+            if (!compile_shader(path.c_str(), entry, "ps_5_0", bytecode.ReleaseAndGetAddressOf()))
             {
                 return false;
             }
@@ -278,7 +278,7 @@ namespace desktopworld
             return false;
         }
 
-        if (!compile_shader(path.c_str(), "VS_Fullscreen", "vs_5_0", bytecode.GetAddressOf()) ||
+        if (!compile_shader(path.c_str(), "VS_Fullscreen", "vs_5_0", bytecode.ReleaseAndGetAddressOf()) ||
             FAILED(_device->CreateVertexShader(
                 bytecode->GetBufferPointer(),
                 bytecode->GetBufferSize(),
