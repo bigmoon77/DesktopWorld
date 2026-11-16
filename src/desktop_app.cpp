@@ -239,6 +239,7 @@ namespace desktopworld
         float base_fps = 2.0f;
         float fixed_fps = 2.0f;
         float twilight_fps = 15.0f;
+        int sample_interval_override_seconds = 0;
 #endif
 
         static LRESULT CALLBACK window_proc(
@@ -666,7 +667,9 @@ namespace desktopworld
             const std::int64_t current_epoch =
                 system_time_to_unix_seconds(current_time);
             const std::int64_t interval =
-                get_sample_interval_seconds(current_sun.elevation_degrees);
+                sample_interval_override_seconds > 0
+                ? sample_interval_override_seconds
+                : get_sample_interval_seconds(current_sun.elevation_degrees);
             const std::int64_t sample_start =
                 (current_epoch / interval) * interval;
 
@@ -997,8 +1000,39 @@ namespace desktopworld
                     ImGui::Text("Sky LUT: %u x %u",
                         atmosphere_renderer::sky_width,
                         atmosphere_renderer::sky_height);
+                    const char* interval_options[] =
+                    {
+                        "Automatic (solar elevation)",
+                        "60 minutes",
+                        "30 minutes",
+                        "15 minutes"
+                    };
+                    int interval_index = 0;
+                    if (sample_interval_override_seconds == 3600)
+                    {
+                        interval_index = 1;
+                    }
+                    else if (sample_interval_override_seconds == 1800)
+                    {
+                        interval_index = 2;
+                    }
+                    else if (sample_interval_override_seconds == 900)
+                    {
+                        interval_index = 3;
+                    }
+                    if (ImGui::Combo(
+                        "Sample interval",
+                        &interval_index,
+                        interval_options,
+                        IM_ARRAYSIZE(interval_options)))
+                    {
+                        constexpr int interval_values[] = { 0, 3600, 1800, 900 };
+                        sample_interval_override_seconds = interval_values[interval_index];
+                        environment_dirty = true;
+                        frames.request_frame();
+                    }
                     ImGui::Text(
-                        "Sample interval: %lld min",
+                        "Active interval: %lld min",
                         static_cast<long long>(sample_interval / 60));
                     ImGui::Text("Blend factor: %.4f", blend_factor);
 
