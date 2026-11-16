@@ -310,6 +310,10 @@ namespace desktopworld
         };
 
         result.precompute_ms = read_scope(gpu_profile_scope::precompute);
+        result.transmittance_ms = read_scope(gpu_profile_scope::transmittance);
+        result.direct_irradiance_ms = read_scope(gpu_profile_scope::direct_irradiance);
+        result.single_scattering_ms = read_scope(gpu_profile_scope::single_scattering);
+        result.multiple_scattering_ms = read_scope(gpu_profile_scope::multiple_scattering);
         result.sky_generation_ms = read_scope(gpu_profile_scope::sky_generation);
         result.blend_ms = read_scope(gpu_profile_scope::blend);
         result.render_ms = read_scope(gpu_profile_scope::render);
