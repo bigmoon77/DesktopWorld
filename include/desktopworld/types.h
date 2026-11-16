@@ -52,6 +52,10 @@ namespace desktopworld
         float cpu_update_ms = 0.0f;
         float gpu_frame_ms = 0.0f;
         float gpu_precompute_ms = 0.0f;
+        float gpu_transmittance_ms = 0.0f;
+        float gpu_direct_irradiance_ms = 0.0f;
+        float gpu_single_scattering_ms = 0.0f;
+        float gpu_multiple_scattering_ms = 0.0f;
         float gpu_render_ms = 0.0f;
         float gpu_sky_generation_ms = 0.0f;
         float gpu_blend_ms = 0.0f;
