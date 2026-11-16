@@ -279,7 +279,6 @@ Pass は WorkerW の HWND や settings_store を直接参照しない。
 [Location]
 Latitude=35.6812
 Longitude=139.7671
-AltitudeMeters=0
 
 [Rendering]
 Method=3
@@ -293,10 +292,8 @@ Exposure=1.0
 RayleighScaleHeightKm=8.0
 MieScaleHeightKm=1.2
 MieG=0.8
-GroundAlbedoR=0.1
-GroundAlbedoG=0.1
-GroundAlbedoB=0.1
-MaxScatteringOrder=4
+; P1: ground albedo and scattering order are added with the multi-scattering model
+
 ~~~
 
 全値は読み込み時に検証する。欠落キーは既定値で補完し、範囲外値はクランプまたは既定値へ戻す。保存は一時ファイルへ書き出した後に置換する。
