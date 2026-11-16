@@ -83,4 +83,16 @@ add_custom_command(TARGET desktopworld POST_BUILD
         $<TARGET_FILE_DIR:desktopworld>/shaders
 )
 
+add_executable(shader_validation tools/shader_validation.cpp)
+target_compile_features(shader_validation PRIVATE cxx_std_20)
+target_compile_definitions(shader_validation PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(shader_validation PRIVATE d3dcompiler)
+
+add_custom_target(validate_shaders ALL
+    COMMAND $<TARGET_FILE:shader_validation>
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/atmosphere.hlsl
+    DEPENDS shader_validation
+    VERBATIM
+)
+
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT desktopworld)
