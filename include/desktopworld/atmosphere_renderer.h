@@ -112,6 +112,8 @@ namespace desktopworld
             const solar_state& sun,
             float blend_factor,
             std::uint32_t scattering_order = 0);
+        bool load_static_cache(std::uint64_t parameter_hash);
+        bool save_static_cache(std::uint64_t parameter_hash);
         void generate_static_luts();
         void generate_transmittance();
         void generate_direct_irradiance();
