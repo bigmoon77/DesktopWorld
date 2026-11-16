@@ -1741,11 +1741,11 @@ namespace desktopworld
                     update_fps_statistics(frame_end);
                 }
 
+                atmosphere.end_profile_frame();
+
 #ifdef DW_ENABLE_DEBUG_UI
                 execute_pending_diagnostics();
 #endif
-
-                atmosphere.end_profile_frame();
 
                 gpu_profile_result gpu_result{};
                 if (atmosphere.get_profile_result(gpu_result) && gpu_result.valid)
