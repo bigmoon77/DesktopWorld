@@ -114,6 +114,8 @@
 
 - Debug Configure / Build / Test
 - Release Build / Test
+- Optional `DESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON` configure and `bruneton_reference_compare` target build
+- HLSL 17 entry-point compile validation
 - 太陽位置・サンプル区間・環境サンプルキャッシュ・設定往復・Frame Controller・RenderPass順序のコアテスト
 
 これらはロジックとビルドの検証であり、実際の Explorer / WorkerW / 複数モニター構成を用いた実機統合テストの代替にはならない。
