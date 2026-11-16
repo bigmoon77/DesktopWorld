@@ -216,6 +216,11 @@ namespace desktopworld
                     return HTTRANSPARENT;
                 }
 
+                if (window == app->desktop_window && message == WM_MOUSEACTIVATE)
+                {
+                    return MA_NOACTIVATE;
+                }
+
 #ifdef DW_ENABLE_DEBUG_UI
                 if (window == app->desktop_window && message == WM_HOTKEY &&
                     wparam == 1)
@@ -357,7 +362,7 @@ namespace desktopworld
 #endif
 
             desktop_window = CreateWindowExW(
-                WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
                 desktop_class_name,
                 L"DesktopWorld Surface",
                 WS_CHILD | WS_VISIBLE,
@@ -371,6 +376,15 @@ namespace desktopworld
                 this);
 
             if (desktop_window == nullptr)
+            {
+                return false;
+            }
+
+            if (!SetLayeredWindowAttributes(
+                desktop_window,
+                0,
+                255,
+                LWA_ALPHA))
             {
                 return false;
             }
