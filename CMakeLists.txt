@@ -121,6 +121,7 @@ target_compile_options(desktopworld_core_tests PRIVATE
 )
 target_link_libraries(desktopworld_core_tests PRIVATE shell32)
 add_test(NAME desktopworld_core_tests COMMAND desktopworld_core_tests)
+set_tests_properties(desktopworld_core_tests PROPERTIES TIMEOUT 45)
 
 add_executable(shader_validation tools/shader_validation.cpp)
 target_compile_features(shader_validation PRIVATE cxx_std_20)
