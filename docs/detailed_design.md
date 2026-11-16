@@ -1,8 +1,8 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.1
-- 対応要件: docs/requirements.md v1.1
-- 状態: 実装着手前の整合設計
+- 文書バージョン: 1.2
+- 対応要件: docs/requirements.md v1.2
+- 状態: 単一仮想デスクトップ描画方式の整合レビュー反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -58,20 +58,20 @@ DesktopWorld
 1. settings_store から設定を読み込む。存在しなければ既定値を作成する。
 2. 設定値を範囲検証する。
 3. monitor_manager が対象モニターを列挙する。
-4. workerw_host が各モニターの WorkerW 描画親を取得する。
-5. 安全な WorkerW を取得できない場合は起動失敗とする。Progman への無条件フォールバックは禁止する。
+4. workerw_host が仮想デスクトップ全体を包含する単一の WorkerW 描画親を取得する。
+5. monitor_manager が算出した仮想デスクトップ矩形を WorkerW のクライアント座標へ変換し、矩形全体が包含されることを確認する。安全な WorkerW または全体を包含する描画領域を確保できない場合は起動失敗とする。Progman への無条件フォールバックや一部モニターだけへの縮退は禁止する。
 6. D3D11 device / immediate context を 1 組生成する。
-7. モニターごとに子描画ウィンドウ、SwapChain、RenderTarget を生成する。
+7. 仮想デスクトップ矩形全体を覆う単一の子描画ウィンドウ、SwapChain、RenderTarget を生成する。SwapChain の寸法は仮想デスクトップ矩形の幅・高さと一致させ、負のデスクトップ座標は親ウィンドウ座標へ変換して配置する。
 8. atmosphere_lut_cache がパラメータ hash に対応する Static LUT をロードする。存在しなければ生成する。
 9. solar_model が現在 UTC と観測地点から太陽方向を計算する。
 10. sky_sample_cache が必要な Sample Pair を生成する。
-11. RenderSystem を開始する。
+11. RenderSystem を開始する。RenderContext に渡す RenderTarget / viewport は単一の仮想デスクトップ描画面に対応させる。
 
 ### 2.2 終了
 
 1. 新規フレーム要求を停止する。
 2. RenderSystem の GPU リソース参照を解放する。
-3. 各 SwapChain / RenderTarget / 描画ウィンドウを解放する。
+3. 単一の SwapChain / RenderTarget / 仮想デスクトップ描画ウィンドウを解放する。
 4. D3D11 context / device を解放する。
 5. 設定を settings_store へ書き出す。
 
@@ -244,7 +244,7 @@ Pass は必要な入力テクスチャと出力先を宣言し、RenderSystem �
 RenderContext は次を提供する。
 
 - D3D11 device / context
-- 現在のモニター向け RenderTarget / viewport
+- 仮想デスクトップ全体を覆う単一 RenderTarget / viewport
 - LUT / SRV / UAV への参照
 - frame constants
 - profiling scope
@@ -268,8 +268,9 @@ Pass は WorkerW の HWND や settings_store を直接参照しない。
 - 各モニターの bounds union を仮想デスクトップ範囲とする。負の左上座標を許容する。
 - WorkerW client area に仮想デスクトップ矩形を MapWindowPoints で変換し、矩形全体が client area 内に収まることを確認する。
 - 初期実装は仮想デスクトップ全体を覆う1つの child window / SwapChain / RenderTarget を使う。全モニターに同じ空を表示する。
-- モニター追加・削除・配置・解像度変更時は monitor_manager を再列挙し、ウィンドウと SwapChain を再構築する。
-- 現行の WorkerW 親が仮想デスクトップ全体を包含しない場合は、誤った部分表示を避けて起動・復旧を失敗させる。
+- モニター追加・削除・配置・解像度変更時は monitor_manager を再列挙し、仮想デスクトップ矩形を再計算する。その後、既存の描画ウィンドウ・SwapChain・RenderTarget を一旦破棄し、新しい矩形に対して単一描画面を一括再構築する。
+- 再構築中は旧 SwapChain の表示を継続しない。新しい仮想デスクトップ全体を包含する WorkerW と描画面の生成に成功した場合のみ描画を再開する。
+- WorkerW 親が仮想デスクトップ全体を包含しない、または再構築に失敗した場合は描画面全体を停止する。残存モニターだけを対象とした部分表示へ縮退せず、定期検査または Shell / Display 通知を契機に全体の再構築を再試行する。
 - モニターごとに異なる環境を設定する機能、複数 WorkerW 親、複数 SwapChain は後続設計で追加する。
 
 ## 8. 設定ファイル
@@ -351,7 +352,7 @@ CPU 計測は次を分ける。
 | Static LUT キャッシュ破損 | キャッシュ削除後に再計算 |
 | GPU query が未完了 | 取得を次フレーム以降に延期 |
 | 設定ファイル不正 | 不正キーを既定値で補完し警告 |
-| モニター消失 | 対象ホストを破棄し残りのモニターを継続 |
+| モニター構成変更・消失 | 旧描画面全体を破棄し、仮想デスクトップ全体を再列挙・再構築する。成功するまで部分表示せず停止状態を維持して再試行 |
 
 ## 11. テスト設計
 
@@ -376,7 +377,7 @@ CPU 計測は次を分ける。
 
 - WorkerW が取得できない場合の安全な終了。
 - Explorer 再起動後の再接続。
-- モニター追加・削除・解像度変更・DPI 変更。
+- モニター追加・削除・配置変更・解像度変更・DPI 変更時に、単一描画面が仮想デスクトップ全体へ再構築されること。再構築失敗時に部分表示へ縮退しないこと。
 - デスクトップアイコン操作とマウス入力の透過。
 - Debug UI を閉じた Release 相当の常駐動作。
 
