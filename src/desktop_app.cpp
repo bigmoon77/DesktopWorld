@@ -237,6 +237,7 @@ namespace desktopworld
         int utc_hour = 12;
         int utc_minute = 0;
         float base_fps = 2.0f;
+        float fixed_fps = 2.0f;
         float twilight_fps = 15.0f;
 #endif
 
@@ -479,11 +480,25 @@ namespace desktopworld
                     requested_levels + 1,
                     1,
                     D3D11_SDK_VERSION,
-                    device.GetAddressOf(),
+                    device.ReleaseAndGetAddressOf(),
                     &feature_level,
-                    context.GetAddressOf());
+                    context.ReleaseAndGetAddressOf());
             }
 #endif
+            if (FAILED(result))
+            {
+                result = D3D11CreateDevice(
+                    nullptr,
+                    D3D_DRIVER_TYPE_HARDWARE,
+                    nullptr,
+                    flags & ~D3D11_CREATE_DEVICE_DEBUG,
+                    requested_levels + 1,
+                    1,
+                    D3D11_SDK_VERSION,
+                    device.ReleaseAndGetAddressOf(),
+                    &feature_level,
+                    context.ReleaseAndGetAddressOf());
+            }
             if (FAILED(result))
             {
                 return false;
@@ -759,8 +774,22 @@ namespace desktopworld
                         frames.set_mode(selected_frame_mode);
                     }
 
-                    ImGui::SliderFloat("Base FPS", &base_fps, 1.0f, 30.0f);
-                    ImGui::SliderFloat("Twilight FPS", &twilight_fps, 1.0f, 30.0f);
+                    bool adaptive_fps_changed = false;
+                    adaptive_fps_changed |= ImGui::SliderFloat(
+                        "Base FPS", &base_fps, 1.0f, 30.0f);
+                    adaptive_fps_changed |= ImGui::SliderFloat(
+                        "Twilight FPS", &twilight_fps, 1.0f, 30.0f);
+                    if (adaptive_fps_changed)
+                    {
+                        frames.set_adaptive_fps(base_fps, twilight_fps);
+                    }
+
+                    if (ImGui::SliderFloat(
+                        "Fixed FPS", &fixed_fps, 1.0f, 30.0f))
+                    {
+                        frames.set_fixed_fps(fixed_fps);
+                    }
+
                     ImGui::Text("Target FPS: %.2f", frames.target_fps());
 
                     if (ImGui::Button("Render Once"))
