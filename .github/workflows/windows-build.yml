@@ -1,0 +1,25 @@
+name: Windows build
+
+on:
+  push:
+    branches:
+      - main
+      - feature/**
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B out/build -A x64
+
+      - name: Build Debug
+        run: cmake --build out/build --config Debug --parallel
+
+      - name: Build Release
+        run: cmake --build out/build --config Release --parallel
