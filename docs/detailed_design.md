@@ -1,8 +1,8 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.2
+- 文書バージョン: 1.3
 - 対応要件: docs/requirements.md v1.2
-- 状態: 単一仮想デスクトップ描画方式の整合レビュー反映版
+- 状態: 単一仮想デスクトップ描画方式およびHDR品質計測仕様の反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -343,15 +343,41 @@ CPU 計測は次を分ける。
 - CPU environment update
 - CPU render command submission / Present
 
-### 9.2 補間誤差
+### 9.2 HDR品質計測・画像キャプチャ
 
-- B の現在時刻 Sky View LUT を比較基準とする。
-- D の時間補間結果と同一解像度・同一座標で比較する。
-- 比較は tone mapping 前の linear HDR radiance で行う。
-- MAE / RMSE / Maximum Absolute Error を記録する。
-- 特に太陽高度 -12°～+12° と、日付・緯度の異なる条件を検証する。
+計測は Debug UI からの明示要求でのみ実行する。常駐時の描画負荷に影響させないため、通常フレームでは readback を行わない。
 
-この測定で得られるのは同一モデル内の時間補間誤差である。大気モデル自体の物理精度は別途、CPU 参照実装または参照画像と比較する。
+#### B vs D: 時間補間誤差
+
+- B 基準画像は、現在時刻の太陽方向を用いて Sky View LUT を再生成する。
+- D 比較画像は、Sample A / B を Compute Shader で補間した Sky View LUT とする。
+- 比較領域は 256 x 128。両画像の各テクセルを同じ座標で比較する。
+- 比較値は tone mapping / exposure 適用前の RGBA16F Linear HDR radiance。
+- GPU から staging texture へコピーし、CPU 側で half float を float32 に変換する。
+
+#### A vs D: 描画経路・空間近似誤差
+
+- A は現在時刻の太陽方向を用いる Fullscreen Pixel Shader の直接評価。
+- D は補間済み Sky View LUT を Fullscreen Pixel Shader でサンプルする。
+- 両方式を同じ Linear HDR RenderTarget に描画し、同じ正規化画面座標で比較する。
+- 解析解像度は元の仮想デスクトップのアスペクト比を維持し、幅 1920 / 高さ 1080 の範囲に収める。
+- A / D の双方に同一の太陽状態、Static LUT、露出未適用条件を使用する。
+
+#### 共通指標
+
+MAE / RMSE / Maximum Absolute Error は RGB の各スカラー成分を対象として算出する。pixel_count は RGB 3成分をまとめたピクセル数を表す。B vs D は LUT 解像度、A vs D は上記解析解像度を結果に記録する。
+
+#### PFM キャプチャ
+
+- Debug UI の操作で現在の Sky View radiance を保存する。
+- 保存形式は PFM (`PF`)、RGB 32-bit float、little-endian。
+- 画像サイズは 256 x 128。行順は PFM 仕様に合わせて下から上へ書き出す。
+- tone mapping / exposure を適用しない。結果は `%LOCALAPPDATA%/DesktopWorld/Captures/sky_<timestamp>.pfm` に保存する。
+- Direct / B は現在時刻の Sky View、C / D は Sample Pair の補間値を保存する。
+
+readback は同期的であり、計測・キャプチャ中は一時的に CPU / GPU が待機する。この処理は明示的な Debug 操作に限定する。
+
+この測定で得られるのは同一モデル内の描画経路・時間補間誤差である。大気モデル自体の物理精度は別途 Bruneton 参照実装との同条件比較で評価する。
 
 ## 10. エラー処理
 
@@ -381,8 +407,10 @@ CPU 計測は次を分ける。
 - Render Method A/B/C/D の出力。
 - Static LUT cache load / invalidation。
 - Timestamp query の非同期回収。
-- B vs D の MAE / RMSE。
-- 現行Aは3D scattering LUTの直接参照、B/DはSky View LUTを経由するため、A vs Dの誤差も併記する。
+- B vs D の MAE / RMSE / Maximum Absolute Error。
+- A vs D の Linear HDR 比較。解析解像度はアスペクト比を維持した最大 1920 x 1080。
+- PFM capture の dimensions / channel order / row order / Linear HDR 値。
+- 比較時に tone mapping / exposure が混入しないこと。
 
 ### 11.3 Integration Test
 
