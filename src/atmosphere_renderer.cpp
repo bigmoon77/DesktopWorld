@@ -133,6 +133,8 @@ namespace desktopworld
         const solar_state& current,
         const float blend_factor)
     {
+        (void)blend_factor;
+
         if (!_initialized)
         {
             return;
@@ -491,8 +493,6 @@ namespace desktopworld
         _context->CSSetShaderResources(0, 1, &input);
         ID3D11SamplerState* sampler = _clamp_sampler.Get();
         _context->CSSetSamplers(1, 1, &sampler);
-        ID3D11SamplerState* sampler = _linear_sampler.Get();
-        _context->CSSetSamplers(0, 1, &sampler);
         _context->CSSetUnorderedAccessViews(0, 1, &target, nullptr);
         _context->CSSetShader(_sky_view_cs.Get(), nullptr, 0);
         _context->Dispatch((sky_width + 7) / 8, (sky_height + 7) / 8, 1);
