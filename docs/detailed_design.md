@@ -1,6 +1,6 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.4
+- 文書バージョン: 1.5
 - 対応要件: docs/requirements.md v1.2
 - 状態: 単一仮想デスクトップ描画方式およびHDR品質計測仕様の反映版
 - 対象 API: Win32 / Direct3D 11
@@ -373,6 +373,7 @@ MAE / RMSE / Maximum Absolute Error は RGB の各スカラー成分を対象と
 - 保存形式は PFM (`PF`)、RGB 32-bit float、little-endian。
 - 画像サイズは 256 x 128。行順は PFM 仕様に合わせて下から上へ書き出す。
 - tone mapping / exposure を適用しない。結果は `%LOCALAPPDATA%/DesktopWorld/Captures/sky_<timestamp>.pfm` に保存する。
+- 同名の `.meta` サイドカーに View Mapping、Render Method、Sun Direction、Atmosphere parameters を保存する。サイドカー書き込みに失敗した場合は PFM も削除し、片方だけの不完全な capture を残さない。
 - Direct / B は現在時刻の Sky View、C / D は Sample Pair の補間値を保存する。
 
 readback は同期的であり、計測・キャプチャ中は一時的に CPU / GPU が待機する。この処理は明示的な Debug 操作に限定する。
@@ -390,6 +391,43 @@ Debug UI では DXGI 1.4 の `IDXGIAdapter3::QueryVideoMemoryInfo` を使用し�
 - 情報取得は Debug UI のみで行い、描画処理やリソース生成を待たせない。
 
 この値はプロセス内の全 D3D / DXGI リソースを含むプロセス全体の使用量であり、DesktopWorld の大気 LUT だけのサイズではない。OS の Budget は動的に変化する上限目安であり、物理 VRAM 容量と同一視しない。
+
+### 9.4 Bruneton CPU reference comparison
+
+物理モデルの比較はデスクトップ常駐アプリから分離した CLI で実行する。既定ビルドでは参照実装を取得・ビルドせず、明示的な CMake option で有効化する。
+
+```powershell
+cmake -S . -B out/reference -A x64 -DDESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON
+cmake --build out/reference --config Release --target bruneton_reference_compare
+.\out\reference\Release\bruneton_reference_compare.exe <sky_capture.pfm>
+```
+
+#### 入力と比較条件
+
+- 入力は DesktopWorld が生成した 256 x 128 PFM と同名 `.meta` サイドカー。
+- Render Method A (Direct) または B (Sky Current) で取得した capture のみを受け付ける。C / D は時間補間誤差を含むため、物理モデル比較から除外する。
+- View direction は Sky View Shader と同じ `azimuth=(u-0.5)*2π`, `elevation=(1-v)*π/2`。各ピクセル中心の座標を用いる。
+- カメラ位置は `(0, planet_radius + 0.01 km, 0)`。太陽方向、大気半径、密度プロファイル、散乱係数、地面反射率、散乱次数を sidecar から再構成する。
+- 参照側は公式 Bruneton CPU reference model の 47 波長スペクトル実装を使用し、同一の太陽方向・幾何条件で Sky Radiance を評価する。
+
+#### RGB / spectral parameter mapping
+
+- DesktopWorld の RGB チャネルは B=440 nm / G=550 nm / R=680 nm に対応させる。
+- Rayleigh / Mie / Ozone extinction / Ground albedo は、各 RGB 値を対応波長で一致させ、47 波長の中間値は区分線形補間する。
+- DesktopWorld の散乱係数は km⁻¹ のため、参照側の m⁻¹ に 1/1000 で変換する。
+- 現行 HLSL の scalar `solar_intensity` は 47 波長で一定の spectral irradiance として参照側に渡す。これは現在の RGB renderer のスケールを揃えるための仮定であり、実太陽スペクトルの再現ではない。
+- Rayleigh / Mie の指数密度プロファイル、Ozone の三角プロファイル、`mie_g`、`mu_s_min=-0.207912`、太陽角半径 0.004675 rad を対応させる。
+- 参照画像の RGB は 47 波長結果の 680 / 550 / 440 nm samples から取り出す。
+
+#### 出力と誤差
+
+- 入力 PFM と同じ top-down image coordinates で CPU reference を評価する。
+- `<stem>_bruneton_reference.pfm` に RGB32F / Linear HDR 参照画像を保存する。
+- `<stem>_bruneton_metrics.txt` に RGB 全成分および R/G/B 各チャネルの MAE / RMSE / Maximum Absolute Error を保存する。
+- 参照 LUT は大気パラメータ hash ごとに OS temporary directory へキャッシュする。Sun Direction は静的 LUT に影響しないため cache key から除外する。
+- 参照モデル初回初期化は CPU 負荷が大きく数分を要する場合がある。通常アプリの起動・描画処理には含めない。
+
+この比較は DesktopWorld の 3 波長係数を合わせた参照計算であり、現行 scalar solar intensity の近似を含む。実太陽の連続スペクトル、偏光、地表の空間変動などをモデル化した完全な分光検証とは扱わない。比較ツールのビルド成功と実測値の収集も別々に評価する。
 
 ## 10. エラー処理
 
@@ -421,7 +459,9 @@ Debug UI では DXGI 1.4 の `IDXGIAdapter3::QueryVideoMemoryInfo` を使用し�
 - Timestamp query の非同期回収。
 - B vs D の MAE / RMSE / Maximum Absolute Error。
 - A vs D の Linear HDR 比較。解析解像度はアスペクト比を維持した最大 1920 x 1080。
-- PFM capture の dimensions / channel order / row order / Linear HDR 値。
+- PFM capture の dimensions / channel order / row order / Linear HDR 値、および `.meta` サイドカーとの整合。
+- Bruneton CLI が A/B capture を受け付け、C/D capture を拒否すること。
+- Reference PFM の RGB channel mapping と per-channel / combined MAE・RMSE・Maximum Absolute Error。
 - 比較時に tone mapping / exposure が混入しないこと。
 
 ### 11.3 Integration Test
