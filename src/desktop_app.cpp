@@ -1151,7 +1151,11 @@ namespace desktopworld
                     ImGui::Text("CPU render submit: %.3f ms", stats.cpu_frame_ms);
                     ImGui::Text("GPU frame: %.3f ms", stats.gpu_frame_ms);
                     ImGui::Separator();
-                    ImGui::Text("GPU base LUT: %.3f ms", stats.gpu_precompute_ms);
+                    ImGui::Text("GPU Static LUT total: %.3f ms", stats.gpu_precompute_ms);
+                    ImGui::Text("  Transmittance: %.3f ms", stats.gpu_transmittance_ms);
+                    ImGui::Text("  Direct irradiance: %.3f ms", stats.gpu_direct_irradiance_ms);
+                    ImGui::Text("  Single scattering: %.3f ms", stats.gpu_single_scattering_ms);
+                    ImGui::Text("  Multiple scattering: %.3f ms", stats.gpu_multiple_scattering_ms);
                     ImGui::Text("GPU Sky View: %.3f ms", stats.gpu_sky_generation_ms);
                     ImGui::Text("GPU blend: %.3f ms", stats.gpu_blend_ms);
                     ImGui::Text("GPU render: %.3f ms", stats.gpu_render_ms);
@@ -1293,6 +1297,10 @@ namespace desktopworld
                 {
                     stats.gpu_frame_ms = gpu_result.frame_ms;
                     stats.gpu_precompute_ms = gpu_result.precompute_ms;
+                    stats.gpu_transmittance_ms = gpu_result.transmittance_ms;
+                    stats.gpu_direct_irradiance_ms = gpu_result.direct_irradiance_ms;
+                    stats.gpu_single_scattering_ms = gpu_result.single_scattering_ms;
+                    stats.gpu_multiple_scattering_ms = gpu_result.multiple_scattering_ms;
                     stats.gpu_sky_generation_ms = gpu_result.sky_generation_ms;
                     stats.gpu_blend_ms = gpu_result.blend_ms;
                     stats.gpu_render_ms = gpu_result.render_ms;
