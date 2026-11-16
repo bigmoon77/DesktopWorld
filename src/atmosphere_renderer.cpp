@@ -179,15 +179,8 @@ namespace desktopworld
         _context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         _context->VSSetShader(_fullscreen_vs.Get(), nullptr, 0);
 
-        if (_render_method == render_method::sky_blend_compute)
-        {
-            blend_sky_views(blend_factor);
-        }
-
         ID3D11Buffer* constant_buffers[] = { _frame_cb.Get(), _atmosphere_cb.Get() };
         _context->PSSetConstantBuffers(0, 2, constant_buffers);
-        ID3D11SamplerState* sampler = _linear_sampler.Get();
-        _context->PSSetSamplers(0, 1, &sampler);
         ID3D11SamplerState* sampler = _linear_sampler.Get();
         _context->PSSetSamplers(0, 1, &sampler);
 
