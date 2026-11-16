@@ -7,6 +7,7 @@
 #include <iterator>
 #include <cmath>
 #include <cwchar>
+#include <cwctype>
 #include <iomanip>
 #include <locale>
 #include <sstream>
@@ -365,7 +366,12 @@ namespace desktopworld
 
         wchar_t* end = nullptr;
         const double parsed = std::wcstod(value, &end);
-        if (end == value || !std::isfinite(parsed))
+        while (*end != L'\0' && std::iswspace(*end))
+        {
+            ++end;
+        }
+
+        if (end == value || *end != L'\0' || !std::isfinite(parsed))
         {
             return fallback;
         }
@@ -394,7 +400,12 @@ namespace desktopworld
 
         wchar_t* end = nullptr;
         const long parsed = std::wcstol(value, &end, 10);
-        if (end == value ||
+        while (*end != L'\0' && std::iswspace(*end))
+        {
+            ++end;
+        }
+
+        if (end == value || *end != L'\0' ||
             parsed < static_cast<long>(INT_MIN) ||
             parsed > static_cast<long>(INT_MAX))
         {
