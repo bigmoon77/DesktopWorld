@@ -67,6 +67,7 @@ namespace desktopworld
         _transmittance_srv.Reset();
         _transmittance_texture.Reset();
 
+        _rasterizer_state.Reset();
         _linear_sampler.Reset();
         _linear_sampler.Reset();
         _frame_cb.Reset();
@@ -175,6 +176,7 @@ namespace desktopworld
 
         _context->OMSetRenderTargets(1, &target, nullptr);
         _context->RSSetViewports(1, &viewport);
+        _context->RSSetState(_rasterizer_state.Get());
         _context->IASetInputLayout(nullptr);
         _context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         _context->VSSetShader(_fullscreen_vs.Get(), nullptr, 0);
@@ -304,9 +306,20 @@ namespace desktopworld
         sampler_description.ComparisonFunc = D3D11_COMPARISON_NEVER;
         sampler_description.MinLOD = 0.0f;
         sampler_description.MaxLOD = D3D11_FLOAT32_MAX;
-        return SUCCEEDED(_device->CreateSamplerState(
+        if (FAILED(_device->CreateSamplerState(
             &sampler_description,
-            _linear_sampler.GetAddressOf()));
+            _linear_sampler.GetAddressOf())))
+        {
+            return false;
+        }
+
+        D3D11_RASTERIZER_DESC rasterizer_description{};
+        rasterizer_description.FillMode = D3D11_FILL_SOLID;
+        rasterizer_description.CullMode = D3D11_CULL_NONE;
+        rasterizer_description.DepthClipEnable = TRUE;
+        return SUCCEEDED(_device->CreateRasterizerState(
+            &rasterizer_description,
+            _rasterizer_state.GetAddressOf()));
     }
 
     bool atmosphere_renderer::create_constant_buffers()
