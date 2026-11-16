@@ -302,11 +302,22 @@ RayleighB=0.033100
 MieScatteringR=0.003996
 MieScatteringG=0.003996
 MieScatteringB=0.003996
+MieExtinctionR=0.004440
+MieExtinctionG=0.004440
+MieExtinctionB=0.004440
+OzoneR=0.000650
+OzoneG=0.001881
+OzoneB=0.000085
+OzoneCenterHeightKm=25
+OzoneHalfWidthKm=15
+GroundAlbedoR=0.1
+GroundAlbedoG=0.1
+GroundAlbedoB=0.1
+MaxScatteringOrder=4
 RayleighScaleHeightKm=8
 MieScaleHeightKm=1.2
 MieAnisotropyG=0.8
 SolarIntensity=20
-; P1 additions: GroundAlbedoR/G/B, ozone density profile, MaxScatteringOrder
 ~~~
 
 全値は読み込み時に検証する。欠落キーは既定値で補完し、範囲外値はクランプまたは既定値へ戻す。保存は一時ファイルへ書き出した後に置換する。
