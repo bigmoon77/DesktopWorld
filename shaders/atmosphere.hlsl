@@ -126,7 +126,7 @@ float3 calculate_transmittance(float altitude_km, float mu)
 float3 sky_view_direction(float2 uv)
 {
     const float azimuth = (uv.x - 0.5) * TAU;
-    const float elevation = (0.5 - uv.y) * PI;
+    const float elevation = (1.0 - uv.y) * (PI * 0.5);
     const float horizontal = cos(elevation);
 
     return normalize(float3(
