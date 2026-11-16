@@ -23,10 +23,9 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT m
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <string>
+#include <memory>
 
 namespace desktopworld
 {
@@ -337,10 +336,6 @@ namespace desktopworld
             settings.base_fps = base_fps;
             settings.fixed_fps = fixed_fps;
             settings.twilight_fps = twilight_fps;
-#else
-            settings.base_fps = settings.base_fps;
-            settings.fixed_fps = settings.fixed_fps;
-            settings.twilight_fps = settings.twilight_fps;
 #endif
             settings.atmosphere = atmosphere.get_parameters();
 
@@ -624,11 +619,16 @@ namespace desktopworld
                 return false;
             }
 
-            if (!atmosphere.set_atmosphere_parameters(settings.atmosphere))
+            atmosphere.begin_profile_frame();
+            const bool atmosphere_parameters_valid =
+                atmosphere.set_atmosphere_parameters(settings.atmosphere);
+            atmosphere.set_exposure(settings.atmosphere.exposure);
+            atmosphere.end_profile_frame();
+
+            if (!atmosphere_parameters_valid)
             {
                 return false;
             }
-            atmosphere.set_exposure(settings.atmosphere.exposure);
             pending_parameters = settings.atmosphere;
             atmosphere.set_render_method(settings.method);
 
