@@ -11,6 +11,5 @@ namespace desktopworld
 
     private:
         struct implementation;
-        implementation* _implementation = nullptr;
     };
 }
