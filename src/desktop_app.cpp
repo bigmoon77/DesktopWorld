@@ -1056,11 +1056,16 @@ namespace desktopworld
                 {
                     ImGui::Text("Target FPS: %.2f", frames.target_fps());
                     ImGui::Text("Measured FPS: %.2f", stats.current_fps);
-                    ImGui::Text("CPU frame: %.3f ms", stats.cpu_frame_ms);
+                    ImGui::Text("CPU frame submit: %.3f ms", stats.cpu_frame_ms);
+                    ImGui::Text("GPU frame: %.3f ms", stats.gpu_frame_ms);
+                    ImGui::Separator();
+                    ImGui::Text("GPU base LUT: %.3f ms", stats.gpu_precompute_ms);
+                    ImGui::Text("GPU Sky View: %.3f ms", stats.gpu_sky_generation_ms);
+                    ImGui::Text("GPU blend: %.3f ms", stats.gpu_blend_ms);
+                    ImGui::Text("GPU render: %.3f ms", stats.gpu_render_ms);
                     ImGui::TextWrapped(
-                        "GPU timestamp queries and GPU memory accounting are not "
-                        "implemented in this first pass. CPU frame timing is reported "
-                        "separately from the GPU workload.");
+                        "GPU durations are collected asynchronously with timestamp "
+                        "queries. GPU memory accounting is not implemented yet.");
                     ImGui::EndTabItem();
                 }
 
@@ -1157,6 +1162,7 @@ namespace desktopworld
                 }
 #endif
 
+                atmosphere.begin_profile_frame();
                 update_solar_state();
                 update_environment();
 
@@ -1178,6 +1184,18 @@ namespace desktopworld
 
                     frames.on_frame_submitted(frame_end);
                     update_fps_statistics(frame_end);
+                }
+
+                atmosphere.end_profile_frame();
+
+                gpu_profile_result gpu_result{};
+                if (atmosphere.get_profile_result(gpu_result) && gpu_result.valid)
+                {
+                    stats.gpu_frame_ms = gpu_result.frame_ms;
+                    stats.gpu_precompute_ms = gpu_result.precompute_ms;
+                    stats.gpu_sky_generation_ms = gpu_result.sky_generation_ms;
+                    stats.gpu_blend_ms = gpu_result.blend_ms;
+                    stats.gpu_render_ms = gpu_result.render_ms;
                 }
             }
 
