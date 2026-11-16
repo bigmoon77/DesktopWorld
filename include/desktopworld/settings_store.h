@@ -4,6 +4,7 @@
 
 #include <Windows.h>
 #include <filesystem>
+#include <string>
 
 namespace desktopworld
 {
