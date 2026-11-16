@@ -21,9 +21,12 @@ Windows desktop background renderer using Win32 and Direct3D 11.
 - Debug-only Dear ImGui window in Debug builds; Ctrl+Shift+D toggles it.
 - Fixed UTC time, latitude/longitude, render method, sample interval, FPS, Rayleigh/Mie/ozone/ground settings, scattering order, and exposure controls.
 - Asynchronous D3D11 timestamp profiling for static precompute stages, Sky View generation, blending, and rendering.
+- Debug-only linear-HDR comparison: B vs D at 256 x 128 and A vs D on an aspect-preserving analysis grid capped at 1920 x 1080, reporting RGB MAE / RMSE / maximum absolute error.
+- Debug-only PFM capture of linear-HDR Sky View radiance at `%LOCALAPPDATA%/DesktopWorld/Captures`.
+- DXGI 1.4 process-level Local / Non-local video-memory usage and OS budget reporting in the Performance tab.
 - CPU environment-update and render-submission timings.
 - Core unit tests for solar position, sample scheduling (including pre-1970 timestamps), environment sample caching, settings round-trip, frame scheduling, and RenderPass ordering.
-- HLSL entry-point compilation validation as part of the Windows build (15 entry points).
+- HLSL entry-point compilation validation as part of the Windows build (17 entry points).
 
 ## Build
 
@@ -55,12 +58,13 @@ The current GPU implementation is an RGB, reduced-resolution, reduced-angular-sa
 
 The current precomputation uses a 4 x 8 angular quadrature, 24 ray steps for scattering integration, and 48 steps for transmittance. The 3D packed scattering LUT is 256 x 128 x 32, with 64 x 16 irradiance. These are performance-oriented starting values, not reference-quality settings.
 
-The pipeline compiles and passes core unit tests, but GPU visual output, physical accuracy against Bruneton reference images, B-vs-D linear-radiance error, and first-run precomputation time have not yet been measured. Do not treat the current result as a physically validated production atmosphere model.
+The pipeline compiles and passes core unit tests. Debug builds can measure B-vs-D and A-vs-D linear-HDR errors and capture PFM Sky View images, but representative measurements have not yet been collected and physical accuracy against Bruneton reference images remains unverified. Do not treat the current result as a physically validated production atmosphere model.
 
 ## Remaining work
 
-- Quantitative reference-image comparison and B-vs-D MAE / RMSE / maximum error.
+- Bruneton reference implementation comparison and physical-model error evaluation.
+- Collect B-vs-D / A-vs-D measurements over twilight, date, latitude, and output-resolution variations.
 - Tune angular quadrature, ray integration steps, LUT resolutions, and scattering order against image error and GPU time.
+- Verify DXGI memory reporting on discrete / integrated / hybrid GPU configurations; per-resource accounting of DesktopWorld-owned allocations is still outstanding.
 - Validate cache cold/warm startup and corrupted-cache recovery on real D3D11 devices.
-- Explorer-restart recovery and full multi-monitor support.
-- GPU memory reporting, image capture, and runtime visual validation on the target desktop.
+- Explorer-restart recovery, mixed-DPI, monitor topology changes, and runtime visual validation on the target desktop.
