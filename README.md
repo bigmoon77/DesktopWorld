@@ -4,7 +4,8 @@ Windows desktop background renderer using Win32 and Direct3D 11.
 
 ## Implemented
 
-- WorkerW desktop surface host for the primary monitor. If a valid WorkerW host is not found, startup fails rather than drawing into a different shell window.
+- WorkerW desktop surface host spanning the virtual desktop with one SwapChain. Monitor bounds are enumerated; if the selected WorkerW client area does not contain the full virtual desktop, startup fails rather than showing a partial or misplaced surface.
+- Explorer recovery using the TaskbarCreated notification and a periodic HWND health check.
 - Direct3D 11 fullscreen sky rendering.
 - UTC solar position calculation from latitude and longitude.
 - An Environment controller that caches the adjacent solar sample pair and updates it only when the sample window or observer location changes.
