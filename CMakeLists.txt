@@ -44,6 +44,7 @@ add_executable(desktopworld WIN32
     src/frame_controller.cpp
     src/time_sample_scheduler.cpp
     src/environment_controller.cpp
+    src/workerw_host.cpp
     src/settings_store.cpp
     src/render_system.cpp
     src/atmosphere_sky_pass.cpp
