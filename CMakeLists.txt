@@ -15,7 +15,10 @@ FetchContent_Declare(
     URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b.tar.gz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
-FetchContent_MakeAvailable(imgui)
+FetchContent_GetProperties(imgui)
+if(NOT imgui_POPULATED)
+    FetchContent_Populate(imgui)
+endif()
 
 set(IMGUI_DIR \${imgui_SOURCE_DIR})
 add_library(desktopworld_imgui STATIC
@@ -37,6 +40,7 @@ add_executable(desktopworld WIN32
     src/solar_model.cpp
     src/frame_controller.cpp
     src/atmosphere_renderer.cpp
+    src/desktop_app.cpp
 )
 
 target_include_directories(desktopworld PRIVATE include)
