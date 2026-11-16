@@ -16,7 +16,8 @@ The source projects are available at:
 
 The reference implementation and its two CPU-only dependencies are distributed under the BSD 3-Clause License. Their copyright notices are retained in the upstream sources fetched by CMake.
 
-Copyright (c) 2016, 2017 Eric Bruneton
+Copyright (c) 2017 Eric Bruneton
+Copyright (c) 2016 Eric Bruneton
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
