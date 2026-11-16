@@ -399,6 +399,7 @@ Debug UI では DXGI 1.4 の `IDXGIAdapter3::QueryVideoMemoryInfo` を使用し�
 ```powershell
 cmake -S . -B out/reference -A x64 -DDESKTOPWORLD_BUILD_BRUNETON_COMPARATOR=ON
 cmake --build out/reference --config Release --target bruneton_reference_compare
+.\out\reference\Release\bruneton_reference_compare.exe --self-test
 .\out\reference\Release\bruneton_reference_compare.exe "C:\path\sky_capture.pfm"
 ```
 
@@ -418,6 +419,7 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 - 現行 HLSL の scalar `solar_intensity` は 47 波長で一定の spectral irradiance として参照側に渡す。これは現在の RGB renderer のスケールを揃えるための仮定であり、実太陽スペクトルの再現ではない。
 - Rayleigh / Mie の指数密度プロファイル、Ozone の三角プロファイル、`mie_g`、`mu_s_min=-0.207912`、太陽角半径 0.004675 rad を対応させる。
 - 参照画像の RGB は 47 波長結果の 680 / 550 / 440 nm samples から取り出す。
+- `--self-test` で PFM の bottom-up / top-down 変換・RGB spectral anchor・MAE / RMSE / 最大誤差を検証する。
 
 #### 出力と誤差
 
