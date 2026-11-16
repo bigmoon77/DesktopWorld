@@ -68,6 +68,7 @@ namespace desktopworld
         _transmittance_texture.Reset();
 
         _rasterizer_state.Reset();
+        _clamp_sampler.Reset();
         _linear_sampler.Reset();
         _linear_sampler.Reset();
         _frame_cb.Reset();
@@ -317,9 +318,19 @@ namespace desktopworld
         rasterizer_description.FillMode = D3D11_FILL_SOLID;
         rasterizer_description.CullMode = D3D11_CULL_NONE;
         rasterizer_description.DepthClipEnable = TRUE;
-        return SUCCEEDED(_device->CreateRasterizerState(
+        if (FAILED(_device->CreateRasterizerState(
             &rasterizer_description,
-            _rasterizer_state.GetAddressOf()));
+            _rasterizer_state.GetAddressOf())))
+        {
+            return false;
+        }
+
+        sampler_description.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sampler_description.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sampler_description.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        return SUCCEEDED(_device->CreateSamplerState(
+            &sampler_description,
+            _clamp_sampler.GetAddressOf()));
     }
 
     bool atmosphere_renderer::create_constant_buffers()
@@ -476,8 +487,8 @@ namespace desktopworld
         update_constant_buffers(sun, 0.0f);
         ID3D11ShaderResourceView* input = _transmittance_srv.Get();
         _context->CSSetShaderResources(0, 1, &input);
-        ID3D11SamplerState* sampler = _linear_sampler.Get();
-        _context->CSSetSamplers(0, 1, &sampler);
+        ID3D11SamplerState* sampler = _clamp_sampler.Get();
+        _context->CSSetSamplers(1, 1, &sampler);
         ID3D11SamplerState* sampler = _linear_sampler.Get();
         _context->CSSetSamplers(0, 1, &sampler);
         _context->CSSetUnorderedAccessViews(0, 1, &target, nullptr);
