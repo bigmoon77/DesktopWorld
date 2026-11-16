@@ -283,6 +283,11 @@ namespace desktopworld
                     return 0;
                 }
 
+                if (window == app->desktop_window && message == WM_NCHITTEST)
+                {
+                    return HTTRANSPARENT;
+                }
+
                 if (message == WM_DISPLAYCHANGE)
                 {
                     app->refresh_desktop_bounds();
@@ -346,11 +351,13 @@ namespace desktopworld
 
             refresh_desktop_bounds();
             GetSystemTime(&fixed_time);
+#ifdef DW_ENABLE_DEBUG_UI
             utc_year = fixed_time.wYear;
             utc_month = fixed_time.wMonth;
             utc_day = fixed_time.wDay;
             utc_hour = fixed_time.wHour;
             utc_minute = fixed_time.wMinute;
+#endif
 
             desktop_window = CreateWindowExW(
                 WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
