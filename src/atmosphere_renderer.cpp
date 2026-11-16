@@ -138,7 +138,11 @@ namespace desktopworld
             return;
         }
 
-        if (_render_method == render_method::sky_blend_pixel ||
+        if (_render_method == render_method::sky_current)
+        {
+            generate_sky_view(_sky_current_uav.Get(), current);
+        }
+        else if (_render_method == render_method::sky_blend_pixel ||
                  _render_method == render_method::sky_blend_compute)
         {
             generate_sky_view(_sky_a_uav.Get(), sample_a);
