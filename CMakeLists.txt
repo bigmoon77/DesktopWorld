@@ -43,6 +43,7 @@ add_executable(desktopworld WIN32
     src/solar_model.cpp
     src/frame_controller.cpp
     src/atmosphere_renderer.cpp
+    src/gpu_profiler.cpp
     src/desktop_app.cpp
 )
 
