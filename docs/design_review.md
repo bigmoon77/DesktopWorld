@@ -21,8 +21,8 @@
 | R-06 | 大気モデル | RGB近似の複数散乱を追加。参照精度は未検証 | Bruneton系の計算順序・Static LUT分離を実装。高精度な参照検証は残る | P1 |
 | R-07 | 描画拡張 | desktop_app と atmosphere_renderer に処理が集中 | RenderSystem / RenderPass を追加し責務分離 | P0 |
 | R-08 | WorkerW | 取得失敗時に Progman へ fallback | アイコン背面を保証できない可能性があるため、安全に失敗する仕様へ変更 | P0 |
-| R-09 | Explorer 再起動 | 再取得処理なし。再検査 timer も未使用 | TaskbarCreated と HWND 検査で再構築 | P2 |
-| R-10 | モニター | プライマリのみ | monitor_manager とモニターごとの SwapChain を追加 | P2 |
+| R-09 | Explorer 再起動 | TaskbarCreated と3秒のHWND検査、WorkerW再構築を追加。実機検証は未実施 | shell再起動・WorkerW再生成を実機検証 | P2 |
+| R-10 | モニター | monitor_managerで列挙し、仮想画面全体を1つのSwapChainで覆う。WorkerW client areaが全範囲を包含しない場合は安全に失敗 | 複数GPU/独立モニターSwapChain・実機構成の検証 | P2 |
 | R-11 | 品質検証 | 太陽位置・サンプル・設定・Pass順の単体テストとHLSL compileを実施。B vs D誤差は未実装 | GPU画像比較とB/D誤差を追加 | P1 |
 | R-12 | GPU 計測 | Timestamp QueryでStatic LUT全体と各大気計算段階を計測。CPU update / submitも分離 | 計測値を実GPU実行で確認 | P1 |
 | R-13 | 過去日時 | epoch / interval の整数除算が負数で 0 方向丸め | floor_div を採用する | P0 |
@@ -68,11 +68,12 @@ Sky View LUT は太陽方向に依存する。現在時刻を挟む 2 枚を保�
 4. Precompute total / Transmittance / Direct Irradiance / Single Scattering / Multiple ScatteringのGPU Timestampを分離した。
 5. 参照画像との物理誤差、B/Dのlinear HDR誤差、低角度積分の妥当性は未検証であり、今後の品質確立タスクとする。
 
-### P2: デスクトップホスト完成
+### P2: デスクトップホストの実機検証・拡張
 
-1. Explorer 再起動時の WorkerW 再取得。
-2. モニター列挙、個別 SwapChain、解像度・DPI 変更処理。
-3. ウィンドウ入力透過・アイコン背面描画を実機で確認する。
+1. Explorer 再起動時の WorkerW 再取得処理は追加済み。Explorer 再起動・テーマ変更を含む実機検証が残る。
+2. モニター列挙と仮想画面全体を覆う1つのSwapChainを追加済み。異なるGPU・混在DPI・モニター配置変更・WorkerWの実クライアント範囲は実機検証が残る。
+3. 各モニター独立SwapChain・独立環境・per-monitor LUTは後続拡張。
+4. ウィンドウ入力透過・アイコン背面描画を実機で確認する。
 
 ## 5. レビュー結果
 
