@@ -969,10 +969,16 @@ namespace desktopworld
                         0.05f,
                         "%.6f");
                     ImGui::SliderFloat3(
-                        "Mie RGB",
+                        "Mie scattering RGB",
                         &pending_parameters.mie_scattering.x,
                         0.0f,
                         0.02f,
+                        "%.6f");
+                    ImGui::SliderFloat3(
+                        "Mie extinction RGB",
+                        &pending_parameters.mie_extinction.x,
+                        0.0f,
+                        0.03f,
                         "%.6f");
                     ImGui::SliderFloat(
                         "Rayleigh scale height",
@@ -985,17 +991,49 @@ namespace desktopworld
                         0.2f,
                         5.0f);
                     ImGui::SliderFloat(
-                        "Mie g",
+                        "Mie anisotropy g",
                         &pending_parameters.mie_g,
-                        0.0f,
+                        -0.98f,
                         0.98f);
+                    ImGui::SliderFloat3(
+                        "Ozone absorption RGB",
+                        &pending_parameters.ozone_absorption.x,
+                        0.0f,
+                        0.005f,
+                        "%.6f");
+                    ImGui::SliderFloat(
+                        "Ozone center height",
+                        &pending_parameters.ozone_center_height_km,
+                        5.0f,
+                        60.0f);
+                    ImGui::SliderFloat(
+                        "Ozone half width",
+                        &pending_parameters.ozone_half_width_km,
+                        1.0f,
+                        40.0f);
+                    ImGui::SliderFloat3(
+                        "Ground albedo RGB",
+                        &pending_parameters.ground_albedo.x,
+                        0.0f,
+                        1.0f);
+                    int scattering_order =
+                        static_cast<int>(pending_parameters.max_scattering_order);
+                    if (ImGui::SliderInt(
+                        "Maximum scattering order",
+                        &scattering_order,
+                        2,
+                        4))
+                    {
+                        pending_parameters.max_scattering_order =
+                            static_cast<std::uint32_t>(scattering_order);
+                    }
                     ImGui::SliderFloat(
                         "Solar intensity",
                         &pending_parameters.solar_intensity,
                         1.0f,
                         50.0f);
 
-                    if (ImGui::Button("Apply and Rebuild Base LUT"))
+                    if (ImGui::Button("Apply Atmosphere and Rebuild LUTs"))
                     {
                         atmosphere.set_atmosphere_parameters(pending_parameters);
                         atmosphere.set_exposure(pending_parameters.exposure);
@@ -1021,10 +1059,14 @@ namespace desktopworld
                         settings.atmosphere.exposure = pending_parameters.exposure;
                         frames.request_frame();
                     }
+                    ImGui::Text(
+                        "Scattering order: %u",
+                        pending_parameters.max_scattering_order);
                     ImGui::TextWrapped(
-                        "This first implementation uses a Rayleigh/Mie single-scattering "
-                        "integrator with a transmittance LUT. Multiple scattering is not "
-                        "implemented yet.");
+                        "Static LUTs use RGB Rayleigh/Mie single scattering and iterative "
+                        "multiple scattering with ozone absorption and diffuse ground "
+                        "reflection. Angular precomputation currently uses 4 x 8 samples; "
+                        "validate image error and startup time before raising quality.");
                     ImGui::EndTabItem();
                 }
 
