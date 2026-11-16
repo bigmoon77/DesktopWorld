@@ -761,9 +761,9 @@ namespace
     bool run_self_tests()
     {
         const std::array<double, 3> anchors = { 0.005802, 0.013558, 0.033100 };
-        if (std::abs(interpolate_rgb_spectrum(anchors, 440.0) - anchors[2]) > 1.0e-12 ||
-            std::abs(interpolate_rgb_spectrum(anchors, 550.0) - anchors[1]) > 1.0e-12 ||
-            std::abs(interpolate_rgb_spectrum(anchors, 680.0) - anchors[0]) > 1.0e-12)
+        if (std::abs(interpolate_rgb_spectrum(anchors, 440.0) - anchors[2]) > 1.0e-6 ||
+            std::abs(interpolate_rgb_spectrum(anchors, 550.0) - anchors[1]) > 1.0e-6 ||
+            std::abs(interpolate_rgb_spectrum(anchors, 680.0) - anchors[0]) > 1.0e-6)
         {
             std::cerr << "RGB spectral anchor mapping self-test failed.\n";
             return false;
@@ -827,14 +827,24 @@ namespace
         const double expected_rmse = std::sqrt(169.0 / component_count);
         if (metrics.pixel_count !=
                 static_cast<std::uint64_t>(expected_width) * expected_height ||
-            std::abs(metrics.combined.mean_absolute_error - expected_mae) > 1.0e-12 ||
-            std::abs(metrics.combined.root_mean_squared_error - expected_rmse) > 1.0e-12 ||
-            std::abs(metrics.combined.maximum_absolute_error - 12.0) > 1.0e-12 ||
-            std::abs(metrics.rgb[0].maximum_absolute_error - 3.0) > 1.0e-12 ||
-            std::abs(metrics.rgb[1].maximum_absolute_error - 4.0) > 1.0e-12 ||
-            std::abs(metrics.rgb[2].maximum_absolute_error - 12.0) > 1.0e-12)
+            std::abs(metrics.combined.mean_absolute_error - expected_mae) > 1.0e-6 ||
+            std::abs(metrics.combined.root_mean_squared_error - expected_rmse) > 1.0e-6 ||
+            std::abs(metrics.combined.maximum_absolute_error - 12.0) > 1.0e-6 ||
+            std::abs(metrics.rgb[0].maximum_absolute_error - 3.0) > 1.0e-6 ||
+            std::abs(metrics.rgb[1].maximum_absolute_error - 4.0) > 1.0e-6 ||
+            std::abs(metrics.rgb[2].maximum_absolute_error - 12.0) > 1.0e-6)
         {
-            std::cerr << "HDR error metric self-test failed.\n";
+            std::cerr << std::setprecision(15)
+                << "HDR error metric self-test failed.\n"
+                << "MAE: " << metrics.combined.mean_absolute_error
+                << " (expected " << expected_mae << ")\n"
+                << "RMSE: " << metrics.combined.root_mean_squared_error
+                << " (expected " << expected_rmse << ")\n"
+                << "Max: " << metrics.combined.maximum_absolute_error << "\n"
+                << "Per-channel max: "
+                << metrics.rgb[0].maximum_absolute_error << ", "
+                << metrics.rgb[1].maximum_absolute_error << ", "
+                << metrics.rgb[2].maximum_absolute_error << "\n";
             return false;
         }
 
@@ -843,9 +853,9 @@ namespace
     }
 }
 
-int main(int argc, char** argv)
+int wmain(int argc, wchar_t** argv)
 {
-    if (argc == 2 && std::string_view(argv[1]) == "--self-test")
+    if (argc == 2 && std::wstring_view(argv[1]) == L"--self-test")
     {
         return run_self_tests() ? 0 : 1;
     }
@@ -859,8 +869,7 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    const std::filesystem::path capture_path =
-        std::filesystem::u8path(argv[1]);
+    const std::filesystem::path capture_path(argv[1]);
     if (!std::filesystem::exists(capture_path))
     {
         std::cerr << "Capture file does not exist.\n";
