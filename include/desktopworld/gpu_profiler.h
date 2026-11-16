@@ -12,6 +12,10 @@ namespace desktopworld
     enum class gpu_profile_scope : std::uint32_t
     {
         precompute = 0,
+        transmittance,
+        direct_irradiance,
+        single_scattering,
+        multiple_scattering,
         sky_generation,
         blend,
         render,
@@ -22,6 +26,10 @@ namespace desktopworld
     {
         float frame_ms = 0.0f;
         float precompute_ms = 0.0f;
+        float transmittance_ms = 0.0f;
+        float direct_irradiance_ms = 0.0f;
+        float single_scattering_ms = 0.0f;
+        float multiple_scattering_ms = 0.0f;
         float sky_generation_ms = 0.0f;
         float blend_ms = 0.0f;
         float render_ms = 0.0f;
