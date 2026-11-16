@@ -13,6 +13,11 @@ namespace desktopworld
     public:
         static constexpr unsigned int sky_width = 256;
         static constexpr unsigned int sky_height = 128;
+        static constexpr unsigned int irradiance_width = 64;
+        static constexpr unsigned int irradiance_height = 16;
+        static constexpr unsigned int scattering_width = 256;
+        static constexpr unsigned int scattering_height = 128;
+        static constexpr unsigned int scattering_depth = 32;
 
         bool initialize(
             ID3D11Device* device,
@@ -66,17 +71,36 @@ namespace desktopworld
             float atmosphere_height_km = 100.0f;
             float rayleigh_scale_height_km = 8.0f;
             float mie_scale_height_km = 1.2f;
+            float mie_extinction[3]{};
+            float rayleigh_scale_height_km = 8.0f;
+            float ozone_absorption[3]{};
+            float mie_scale_height_km = 1.2f;
+            float ground_albedo[3]{};
             float mie_g = 0.8f;
             float solar_intensity = 20.0f;
+            float ozone_center_height_km = 25.0f;
+            float ozone_half_width_km = 15.0f;
+            float sun_angular_radius = 0.004675f;
+            float mu_s_min = -0.207912f;
+            std::uint32_t max_scattering_order = 4;
+            std::uint32_t angular_theta_samples = 4;
+            std::uint32_t angular_phi_samples = 8;
+            std::uint32_t reserved = 0;
         };
 
         bool create_shaders(const wchar_t* shader_path);
         bool create_constant_buffers();
         bool create_textures();
+        bool create_static_scattering_textures();
         bool create_render_target(
+
             unsigned int width,
             unsigned int height,
             ID3D11Texture2D** texture,
+            ID3D11ShaderResourceView** srv,
+            ID3D11UnorderedAccessView** uav);
+        bool create_volume_texture(
+            ID3D11Texture3D** texture,
             ID3D11ShaderResourceView** srv,
             ID3D11UnorderedAccessView** uav);
         bool compile_shader(
@@ -86,11 +110,16 @@ namespace desktopworld
             ID3DBlob** bytecode);
 
         void update_constant_buffers(const solar_state& sun, float blend_factor);
+        void generate_static_luts();
         void generate_transmittance();
+        void generate_direct_irradiance();
+        void generate_single_scattering();
+        void generate_multiple_scattering();
         void generate_sky_view(
             ID3D11UnorderedAccessView* target,
             const solar_state& sun);
         void blend_sky_views(float blend_factor);
+        void dispatch_3d(ID3D11ComputeShader* shader);
         void clear_compute_bindings();
 
         gpu_profiler _profiler;
@@ -100,6 +129,13 @@ namespace desktopworld
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> _transmittance_cs;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> _sky_view_cs;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> _blend_cs;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> _direct_irradiance_cs;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> _single_scattering_cs;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> _scattering_density_cs;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> _multiple_scattering_cs;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> _indirect_irradiance_cs;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> _accumulate_scattering_cs;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> _accumulate_irradiance_cs;
         Microsoft::WRL::ComPtr<ID3D11VertexShader> _fullscreen_vs;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> _direct_ps;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> _current_ps;
@@ -115,6 +151,41 @@ namespace desktopworld
         Microsoft::WRL::ComPtr<ID3D11Texture2D> _transmittance_texture;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _transmittance_srv;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _transmittance_uav;
+
+        Microsoft::WRL::ComPtr<ID3D11Texture3D> _single_rayleigh_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _single_rayleigh_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _single_rayleigh_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture3D> _single_mie_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _single_mie_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _single_mie_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture3D> _scattering_sum_a_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _scattering_sum_a_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _scattering_sum_a_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture3D> _scattering_sum_b_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _scattering_sum_b_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _scattering_sum_b_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture3D> _scattering_density_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _scattering_density_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _scattering_density_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture3D> _delta_multiple_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _delta_multiple_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _delta_multiple_uav;
+
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> _direct_irradiance_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _direct_irradiance_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _direct_irradiance_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> _delta_irradiance_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _delta_irradiance_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _delta_irradiance_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> _next_irradiance_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _next_irradiance_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _next_irradiance_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> _irradiance_sum_a_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _irradiance_sum_a_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _irradiance_sum_a_uav;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> _irradiance_sum_b_texture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _irradiance_sum_b_srv;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> _irradiance_sum_b_uav;
 
         Microsoft::WRL::ComPtr<ID3D11Texture2D> _sky_a_texture;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _sky_a_srv;
