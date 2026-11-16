@@ -101,7 +101,7 @@
 | O-03 | A vs Dモデル/空間近似誤差 | 自動測定が未実装 | 比較条件を固定して測定 |
 | O-04 | GPUメモリ | GPU Timestamp はあるがメモリ計測なし | DXGI / D3D11 で取得可能な範囲を定義して実装 |
 | O-05 | 実機ホスト検証 | WorkerW再取得処理はあるが実機検証未完了 | Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
-| O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として扱う。時間追従が必要な場合は Adaptive / Fixed を使う | 仕様確定 |
+| O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として定義済み。時間追従が必要な場合は Adaptive / Fixed を使う |
 
 ### 5.1 OnDemandの時刻更新
 
