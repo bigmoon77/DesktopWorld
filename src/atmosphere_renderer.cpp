@@ -1463,6 +1463,7 @@ namespace desktopworld
 
     void atmosphere_renderer::generate_transmittance()
     {
+        _profiler.begin_scope(gpu_profile_scope::transmittance);
         update_constant_buffers(solar_state{}, 0.0f);
 
         ID3D11UnorderedAccessView* output = _transmittance_uav.Get();
@@ -1475,10 +1476,12 @@ namespace desktopworld
             (transmittance_height + 7) / 8,
             1);
         clear_compute_bindings();
+        _profiler.end_scope(gpu_profile_scope::transmittance);
     }
 
     void atmosphere_renderer::generate_direct_irradiance()
     {
+        _profiler.begin_scope(gpu_profile_scope::direct_irradiance);
         update_constant_buffers(solar_state{}, 0.0f);
 
         ID3D11ShaderResourceView* transmittance = _transmittance_srv.Get();
@@ -1497,10 +1500,12 @@ namespace desktopworld
             1);
 
         clear_compute_bindings();
+        _profiler.end_scope(gpu_profile_scope::direct_irradiance);
     }
 
     void atmosphere_renderer::generate_single_scattering()
     {
+        _profiler.begin_scope(gpu_profile_scope::single_scattering);
         update_constant_buffers(solar_state{}, 0.0f);
 
         ID3D11ShaderResourceView* transmittance = _transmittance_srv.Get();
@@ -1523,10 +1528,12 @@ namespace desktopworld
         _context->CopyResource(
             _scattering_sum_a_texture.Get(),
             _single_rayleigh_texture.Get());
+        _profiler.end_scope(gpu_profile_scope::single_scattering);
     }
 
     void atmosphere_renderer::generate_multiple_scattering()
     {
+        _profiler.begin_scope(gpu_profile_scope::multiple_scattering);
         const float clear_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         _context->ClearUnorderedAccessViewFloat(
             _irradiance_sum_a_uav.Get(),
@@ -1688,6 +1695,8 @@ namespace desktopworld
             swap_com_ptr(_delta_irradiance_srv, _next_irradiance_srv);
             swap_com_ptr(_delta_irradiance_uav, _next_irradiance_uav);
         }
+
+        _profiler.end_scope(gpu_profile_scope::multiple_scattering);
     }
 
     void atmosphere_renderer::generate_sky_view(
