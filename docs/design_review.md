@@ -1,10 +1,10 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象ブランチ: `feature/initial-implementation`
-- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.3
+- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.4
 - レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、およびHDR品質計測仕様とコードの照合
 - 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測とPFMキャプチャを実装。**
-- 未完了: Bruneton参照実装との物理精度比較、GPUメモリ計測、実機での複数モニター / Explorer 復旧検証。
+- 未完了: Bruneton参照実装との物理精度比較、実機での複数モニター / Explorer 復旧検証。
 - 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
 ## 1. レビュー対象と前提
@@ -67,7 +67,7 @@
 | 大気モデル | Bruneton 系を最終基準とする | RGB・低解像度プロトタイプと最終精度検証を区別 | 整合。ただし品質未達 |
 | Render構造 | Render Pass 単位で拡張 | 直列 RenderSystem / AtmosphereSkyPass | 整合 |
 | 設定 | Releaseでも設定を保持 | settings.ini と範囲検証 | 整合 |
-| Diagnostics | GPU / CPU 計測と品質評価 | Timestamp / 画像比較設計 | 設計整合。計測機能は一部未実装 |
+| Diagnostics | GPU / CPU 計測と品質評価 | Timestamp / HDR画像比較 / DXGIメモリ情報 | 設計と Debug 計測機能が整合。実機での計測値収集は継続 |
 | テスト | 数値・設定・Pass・HLSLを検証 | Unit / GPU / Integration Test | 整合。ただし未実装テストあり |
 
 ## 4. 実装との照合
@@ -92,6 +92,13 @@
 
 この計測は同一の近似大気モデル内で描画経路の誤差を見るもの。Bruneton 参照実装に対する物理精度を検証した結果とは扱わない。
 
+### 4.3 GPUメモリ監視の実装確認
+
+- Debug UI は `IDXGIAdapter3::QueryVideoMemoryInfo` から Local / Non-local segment のプロセス使用量と OS Budget を取得する。
+- 約 1 秒間隔で取得し、Debug UI 以外の描画経路には追加の同期を導入しない。
+- 表示値は DesktopWorld 単体のリソース総量ではなく、対象プロセス全体の DXGI 使用量である。
+- ドライバー / segment が未対応の場合は unavailable と表示する。
+
 ### 4.3 CIで確認した範囲
 
 確認済みの Windows CI run では以下が成功している。
@@ -109,7 +116,7 @@
 | O-01 | Bruneton参照精度 | RGB近似・低解像度の複数散乱プロトタイプ | 参照実装と同条件の画像比較・数値誤差評価 |
 | O-02 | B vs D補間誤差 | Debug UI からワンショットで Linear HDR の MAE / RMSE / 最大誤差を計測できる | 薄明・緯度・日付の異なる条件で実測結果を収集 |
 | O-03 | A vs D描画経路・空間近似誤差 | 同一 Linear HDR 条件、最大 1920 x 1080 の解析グリッドで計測できる | 複数の出力解像度・太陽高度で実測結果を収集 |
-| O-04 | GPUメモリ | GPU Timestamp はあるがメモリ計測なし | DXGI / D3D11 で取得可能な範囲を定義して実装 |
+| O-04 | GPUメモリ | DXGI 1.4 によるプロセス単位 Local / Non-local 使用量・Budget を Debug UI に表示 | 複数GPU / iGPU / dGPU環境で取得可否と挙動を確認 |
 | O-05 | 実機ホスト検証 | WorkerW再取得処理はあるが実機検証未完了 | Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
 | O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として定義済み。時間追従が必要な場合は Adaptive / Fixed を使う |
 
