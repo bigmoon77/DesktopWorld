@@ -28,6 +28,7 @@ Texture2D<float4> g_sky_a : register(t1);
 Texture2D<float4> g_sky_b : register(t2);
 Texture2D<float4> g_sky_current : register(t3);
 SamplerState g_linear_sampler : register(s0);
+SamplerState g_clamp_sampler : register(s1);
 
 RWTexture2D<float4> g_compute_output : register(u0);
 
@@ -68,7 +69,7 @@ float2 transmittance_uv(float altitude_km, float zenith_cosine)
 float3 sample_transmittance(float altitude_km, float zenith_cosine)
 {
     return g_transmittance.SampleLevel(
-        g_linear_sampler,
+        g_clamp_sampler,
         transmittance_uv(altitude_km, zenith_cosine),
         0).rgb;
 }
