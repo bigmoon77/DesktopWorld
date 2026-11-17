@@ -1,8 +1,8 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.6
-- 対応要件: docs/requirements.md v1.2
-- 状態: 単一仮想デスクトップ描画方式、HDR品質計測、Bruneton CPU比較仕様の反映版
+- 文書バージョン: 1.7
+- 対応要件: docs/requirements.md v1.3
+- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / layered Progman ホスト構成、HDR品質計測、Bruneton CPU比較仕様の反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -58,10 +58,10 @@ DesktopWorld
 1. settings_store から設定を読み込む。存在しなければ既定値を作成する。
 2. 設定値を範囲検証する。
 3. monitor_manager が対象モニターを列挙する。
-4. workerw_host が仮想デスクトップ全体を包含する単一の WorkerW 描画親を取得する。
-5. monitor_manager が算出した仮想デスクトップ矩形を WorkerW のクライアント座標へ変換し、矩形全体が包含されることを確認する。安全な WorkerW または全体を包含する描画領域を確保できない場合は起動失敗とする。Progman への無条件フォールバックや一部モニターだけへの縮退は禁止する。
+4. workerw_host が Explorer のデスクトップホスト構成を判別する。旧構成ではアイコンを含む SHELLDLL_DefView の後ろにあるトップレベル WorkerW を描画親として取得する。layered Progman 構成（Windows 11 24H2+）では Progman を描画親として取得し、独自の layered child window を SHELLDLL_DefView と壁紙 WorkerW の間へ配置する。
+5. monitor_manager が算出した仮想デスクトップ矩形を選択した描画親のクライアント座標へ変換し、矩形全体が包含されることを確認する。安全なホストと全体を包含する描画領域を確保できない場合は起動失敗とする。旧構成・layered Progman 構成以外への無条件フォールバックや一部モニターだけへの縮退は禁止する。
 6. D3D11 device / immediate context を 1 組生成する。
-7. 仮想デスクトップ矩形全体を覆う単一の子描画ウィンドウ、SwapChain、RenderTarget を生成する。SwapChain の寸法は仮想デスクトップ矩形の幅・高さと一致させ、負のデスクトップ座標は親ウィンドウ座標へ変換して配置する。
+7. 選択した描画親の子として仮想デスクトップ矩形全体を覆う単一の描画ウィンドウ、SwapChain、RenderTarget を生成する。layered Progman 構成では、描画ウィンドウを SHELLDLL_DefView の直下、壁紙 WorkerW の直上へ Z オーダー設定する。SwapChain の寸法は仮想デスクトップ矩形の幅・高さと一致させ、負のデスクトップ座標は親ウィンドウ座標へ変換して配置する。
 8. atmosphere_lut_cache がパラメータ hash に対応する Static LUT をロードする。存在しなければ生成する。
 9. solar_model が現在 UTC と観測地点から太陽方向を計算する。
 10. sky_sample_cache が必要な Sample Pair を生成する。
@@ -253,24 +253,26 @@ Pass は WorkerW の HWND や settings_store を直接参照しない。
 
 ## 7. Platform / モニター
 
-### 7.1 WorkerW
+### 7.1 デスクトップホスト（WorkerW / layered Progman）
 
-- WorkerW の発見処理は workerw_host に閉じ込める。
-- Progman メッセージは探索トリガーとして扱う。
-- アイコンを含む SHELLDLL_DefView の sibling となる WorkerW を取得する。
-- 取得できなければエラーを返す。別ホストへの無条件フォールバックは禁止する。
-- TaskbarCreated、ホスト HWND の無効化、定期検査を契機に再取得する。
+- Explorer のウィンドウ階層の検出とホスト HWND の取得は workerw_host に閉じ込める。
+- 旧構成では、SHELLDLL_DefView を持つトップレベルウィンドウの後ろにあるトップレベル WorkerW を描画親とする。
+- layered Progman 構成（Windows 11 24H2+）では、Progman を描画親とし、その子である SHELLDLL_DefView と壁紙 WorkerW を検出する。DesktopWorld の layered child window は両者の間に Z オーダー設定する。壁紙 WorkerW 自体を DesktopWorld の親にはしない。
+- Progman の 0x052C メッセージは、必要時に Explorer のホスト生成を促して再探索するために使用する。
+- どちらの既知構成も取得できなければエラーを返す。親子関係や Z オーダーが不明なウィンドウへの無条件フォールバックは禁止する。
+- 選択した描画親の client area に仮想デスクトップ矩形全体が包含されることを確認する。
+- TaskbarCreated、ホスト HWND の無効化、定期検査を契機にレイアウト全体を再取得する。
 - Explorer 再起動後、古い HWND を使い続けない。
 
 ### 7.2 マルチモニター
 
 - monitor_manager は EnumDisplayMonitors / GetMonitorInfo を用いてモニターの物理座標と device name を取得する。
 - 各モニターの bounds union を仮想デスクトップ範囲とする。負の左上座標を許容する。
-- WorkerW client area に仮想デスクトップ矩形を MapWindowPoints で変換し、矩形全体が client area 内に収まることを確認する。
+- 選択した描画親（旧構成の WorkerW または layered Progman）の client area に仮想デスクトップ矩形を MapWindowPoints で変換し、矩形全体が client area 内に収まることを確認する。
 - 初期実装は仮想デスクトップ全体を覆う1つの child window / SwapChain / RenderTarget を使う。全モニターに同じ空を表示する。
 - モニター追加・削除・配置・解像度変更時は monitor_manager を再列挙し、仮想デスクトップ矩形を再計算する。その後、既存の描画ウィンドウ・SwapChain・RenderTarget を一旦破棄し、新しい矩形に対して単一描画面を一括再構築する。
 - 再構築中は旧 SwapChain の表示を継続しない。新しい仮想デスクトップ全体を包含する WorkerW と描画面の生成に成功した場合のみ描画を再開する。
-- WorkerW 親が仮想デスクトップ全体を包含しない、または再構築に失敗した場合は描画面全体を停止する。残存モニターだけを対象とした部分表示へ縮退せず、定期検査または Shell / Display 通知を契機に全体の再構築を再試行する。
+- 選択したデスクトップホストが仮想デスクトップ全体を包含しない、または再構築に失敗した場合は描画面全体を停止する。残存モニターだけを対象とした部分表示へ縮退せず、定期検査または Shell / Display 通知を契機に全体の再構築を再試行する。
 - モニターごとに異なる環境を設定する機能、複数 WorkerW 親、複数 SwapChain は後続設計で追加する。
 
 ## 8. 設定ファイル
@@ -435,7 +437,7 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 
 | 失敗 | 動作 |
 |---|---|
-| WorkerW を取得できない | 初期化失敗として通知 |
+| 対応するデスクトップホストを取得できない | 初期化失敗として通知 |
 | D3D11 device 作成失敗 | 起動失敗として HRESULT を記録 |
 | Shader compile / Create* 失敗 | Shader 名・HRESULT・Compiler message を記録 |
 | Static LUT キャッシュ破損 | キャッシュ削除後に再計算 |
@@ -468,7 +470,7 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 
 ### 11.3 Integration Test
 
-- WorkerW が取得できない場合の安全な終了。
+- 対応するデスクトップホストを取得できない場合の安全な終了。
 - Explorer 再起動後の再接続。
 - モニター追加・削除・配置変更・解像度変更・DPI 変更時に、単一描画面が仮想デスクトップ全体へ再構築されること。再構築失敗時に部分表示へ縮退しないこと。
 - デスクトップアイコン操作とマウス入力の透過。

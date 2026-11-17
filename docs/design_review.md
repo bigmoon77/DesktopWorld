@@ -1,9 +1,9 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象ブランチ: `feature/initial-implementation`
-- 基準文書: `docs/requirements.md` v1.2 / `docs/detailed_design.md` v1.6
+- 基準文書: `docs/requirements.md` v1.3 / `docs/detailed_design.md` v1.7
 - レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、HDR品質計測、Bruneton CPU比較CLIの仕様とコードの照合
-- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
+- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。旧 WorkerW と layered Progman の2つのデスクトップホスト構成を実装。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
 - 未完了: 実際のGPU captureを用いたBruneton比較値の収集、実機での複数モニター / Explorer 復旧検証。
 - 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
@@ -14,7 +14,7 @@
 初期実装の方式は次のとおりである。
 
 - モニターを列挙し、各モニターの物理座標の union から仮想デスクトップ矩形を求める。
-- 仮想デスクトップ全体を包含する WorkerW 描画親を1つ取得する。
+- OS のウィンドウ階層に対応したデスクトップ描画親を1つ取得する。旧構成ではトップレベル WorkerW、layered Progman 構成では Progman を描画親として使用する。
 - 仮想デスクトップ全体を覆う子描画ウィンドウを1つ生成する。
 - D3D11 device / immediate context、SwapChain、RenderTarget はそれぞれ単一構成とする。
 - すべてのモニターに同じ空の環境を連続した1つの描画面として表示する。
@@ -27,7 +27,7 @@
 | ID | 項目 | 修正前の問題 | 統一した仕様 | 状態 |
 |---|---|---|---|---|
 | R-01 | SwapChain構成 | 詳細設計 2.1 はモニターごと、FR-01 / 詳細設計 7.2 は仮想デスクトップ全体に1つ | 単一の仮想デスクトップ子ウィンドウ / SwapChain / RenderTarget | 修正済み |
-| R-02 | 起動時WorkerW取得 | 「各モニターのWorkerW」と読める記述が単一ホスト方式と不整合 | 仮想デスクトップ全体を包含する単一の WorkerW 描画親を取得 | 修正済み |
+| R-02 | 起動時デスクトップホスト取得 | 旧 Explorer の WorkerW 構成だけを前提としており、新しい layered Progman 構成を扱えない | 旧トップレベル WorkerW と layered Progman の2構成を検出し、適切な親子関係・Z オーダーで描画面を配置 | 実装済み・実機検証待ち |
 | R-03 | RenderContext | 「現在のモニター向けRenderTarget」と単一描画面の説明が不一致 | 仮想デスクトップ全体の単一 RenderTarget / viewport | 修正済み |
 | R-04 | モニター変更時の復旧 | 「対象ホストを破棄し残りのモニターを継続」は単一SwapChain方式と不整合 | 全体を再列挙・再構築し、成功まで描画面全体を停止 | 修正済み |
 | R-05 | 終了処理 | 複数SwapChainを前提とする表現 | 単一SwapChain / RenderTarget / 描画ウィンドウの解放 | 修正済み |
@@ -47,7 +47,7 @@
 1. Display / DPI / Shell の通知または HWND 検査で変更を検出する。
 2. 旧描画面の RenderTarget / SwapChain / 子ウィンドウを破棄する。
 3. モニターを再列挙して仮想デスクトップ矩形を再計算する。
-4. 全体を包含する WorkerW を再取得する。
+4. 現在の Explorer 構成に対応するデスクトップホストの親 HWND と Z オーダー情報を再取得する。
 5. 単一子ウィンドウ / SwapChain / RenderTarget を再生成する。
 6. すべて成功した場合だけ描画を再開する。
 7. 失敗した場合は部分表示せず、描画停止状態で再試行する。
@@ -56,7 +56,7 @@
 
 | 領域 | 要件 | 詳細設計 | 判定 |
 |---|---|---|---|
-| デスクトップホスト | アイコン背面、入力透過、安全な失敗 | WorkerWHost、単一仮想画面ホスト | 整合 |
+| デスクトップホスト | アイコン背面、入力透過、安全な失敗 | 旧 WorkerW / layered Progman の構成別ホスト、単一仮想画面 | 整合 |
 | 複数モニター | 仮想デスクトップ全体を連続表示 | bounds union と単一 SwapChain | 整合 |
 | モニター構成変更 | 全体を覆う状態を維持 | 全体再構築、失敗時は停止・再試行 | 整合 |
 | 時刻 | UTC を内部標準とする | UTC epoch seconds | 整合 |
@@ -76,10 +76,10 @@
 
 - `desktop_app` は単一の desktop child window と desktop SwapChain / RenderTarget を保持する。
 - `monitor_manager` の仮想デスクトップ bounds を基準に描画面の寸法・位置を決定する。
-- WorkerW client area が仮想デスクトップ全体を包含しない場合、描画面生成を失敗させる。
+- 選択したデスクトップホストの client area が仮想デスクトップ全体を包含しない場合、描画面生成を失敗させる。
 - `WM_DISPLAYCHANGE` / `WM_DPICHANGED`、TaskbarCreated、定期 HWND 検査を再構築要求につなげる。
 - ホスト再構築では旧描画面を破棄し、新しい描画面の生成に成功した場合だけ描画を再開する。
-- WorkerW の取得・再構築に失敗した場合は描画面を無効化し、定期検査で再試行する。
+- 旧 WorkerW / layered Progman の取得・再構築に失敗した場合は描画面を無効化し、定期検査で再試行する。
 - D3D11 device / immediate context は単一構成である。
 
 ### 4.2 HDR品質計測の実装確認
@@ -118,7 +118,7 @@
 - HLSL 17 entry-point compile validation
 - 太陽位置・サンプル区間・環境サンプルキャッシュ・設定往復・Frame Controller・RenderPass順序のコアテスト
 
-これらはロジックとビルドの検証であり、実際の Explorer / WorkerW / 複数モニター構成を用いた実機統合テストの代替にはならない。
+これらはロジックとビルドの検証であり、実際の Explorer の旧 WorkerW / layered Progman 構成や複数モニター環境を用いた実機統合テストの代替にはならない。
 
 ## 5. 残存課題と設計上の注意
 
@@ -128,7 +128,7 @@
 | O-02 | B vs D補間誤差 | Debug UI からワンショットで Linear HDR の MAE / RMSE / 最大誤差を計測できる | 薄明・緯度・日付の異なる条件で実測結果を収集 |
 | O-03 | A vs D描画経路・空間近似誤差 | 同一 Linear HDR 条件、最大 1920 x 1080 の解析グリッドで計測できる | 複数の出力解像度・太陽高度で実測結果を収集 |
 | O-04 | GPUメモリ | DXGI 1.4 によるプロセス単位 Local / Non-local 使用量・Budget を Debug UI に表示 | 複数GPU / iGPU / dGPU環境で取得可否と挙動を確認 |
-| O-05 | 実機ホスト検証 | WorkerW再取得処理はあるが実機検証未完了 | Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
+| O-05 | 実機ホスト検証 | 旧 WorkerW / layered Progman の2構成を検出する処理を実装。両構成とも実機表示検証は未完了 | Windows 10 / Windows 11 24H2+、Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
 | O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として定義済み。時間追従が必要な場合は Adaptive / Fixed を使う |
 
 ### 5.1 OnDemandの時刻更新
@@ -139,11 +139,11 @@ OnDemand は明示的な描画要求がない限り待機し、システム時�
 
 ### 設計文書
 
-**単一仮想デスクトップ描画方式について、要件定義と詳細設計の矛盾は解消した。**
+**単一仮想デスクトップ描画方式と、旧 WorkerW / layered Progman のホスト構成について、要件定義と詳細設計の整合を取った。実機表示検証は継続課題とする。**
 
 - 起動・終了シーケンス
 - RenderContext
-- WorkerW取得
+- 旧 WorkerW / layered Progman のデスクトップホスト取得
 - モニター列挙
 - モニター構成変更時の復旧
 - エラー処理

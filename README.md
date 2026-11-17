@@ -4,7 +4,7 @@ Windows desktop background renderer using Win32 and Direct3D 11.
 
 ## Implemented
 
-- WorkerW desktop surface host spanning the virtual desktop with one SwapChain. Monitor bounds are enumerated; if the selected WorkerW client area does not contain the full virtual desktop, startup fails rather than showing a partial or misplaced surface.
+- Desktop background host spans the virtual desktop with one SwapChain. Legacy Explorer uses the top-level WorkerW host; Windows 11 24H2+ layered Progman uses a child under Progman, positioned between SHELLDLL_DefView and the wallpaper WorkerW. If the selected host client area does not contain the full virtual desktop, startup fails rather than showing partial or misplaced content.
 - Explorer recovery using the TaskbarCreated notification and a periodic HWND health check.
 - Direct3D 11 fullscreen sky rendering.
 - UTC solar position calculation from latitude and longitude.
@@ -62,7 +62,7 @@ If initialization fails, the dialog now identifies the failing stage and (where 
 
 `%LOCALAPPDATA%/DesktopWorld/Logs/startup.log`
 
-Attach that log when reporting a startup failure. It records WorkerW bounds, window / SwapChain creation, D3D11 setup, shader compilation, and atmosphere resource initialization failures.
+Attach that log when reporting a startup failure. It records desktop-host discovery and bounds, window / SwapChain creation, D3D11 setup, shader compilation, and atmosphere resource initialization failures.
 
 ## Settings
 On first launch the application creates `%APPDATA%/DesktopWorld/settings.ini`. It stores observer latitude/longitude, render method, frame mode and FPS, sample interval override, exposure, and physical atmosphere parameters. The file can be edited directly in Release builds.
