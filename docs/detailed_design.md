@@ -1,8 +1,8 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.9
-- 対応要件: docs/requirements.md v1.5
-- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / raised desktop ホスト構成、layered child 用アプリケーションマニフェスト、HDR品質計測、Bruneton CPU比較仕様の反映版
+- 文書バージョン: 2.0
+- 対応要件: docs/requirements.md v1.6
+- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / raised desktop ホスト構成、layered child 用アプリケーションマニフェスト、D3D11 constant buffer packing、HDR品質計測、Bruneton CPU比較仕様の反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -216,6 +216,19 @@ Dynamic LUT:
 - 不完全・破損データは破棄し再生成する。
 - キャッシュ生成中は同じディレクトリの一時ファイルへ出力し、完了後に置換する。
 - 現行ファイルはヘッダにmagic / version / format / 各LUT寸法 / parameter hashを記録し、Transmittance、Direct Irradiance、Irradiance累積、Single Rayleigh、Single Mie、Scattering累積を格納する。
+
+### 5.4 D3D11 Constant Buffer
+
+| Buffer | HLSL register | C++ size | HLSL layout |
+|---|---:|---:|---|
+| Frame constants | b0 | 48 bytes | resolution / inverse resolution / sun direction / exposure / blend / scattering order / padding |
+| Atmosphere constants | b1 | 112 bytes | five 16-byte float3 + scalar groups, followed by 32-bit scalar / uint values |
+
+- `D3D11_BUFFER_DESC::ByteWidth` は16の倍数でなければならない。
+- `atmosphere_constants` は HLSL の `AtmosphereCB` と同じ offset を持つ。`solar_intensity` は offset 80、`max_scattering_order` は offset 100、`angular_phi_samples` は offset 108 とする。
+- HLSL に存在しない末尾メンバーを C++ 側へ追加しない。追加する場合は同じ padding を HLSL cbuffer にも定義する。
+- `static_assert` でサイズと重要フィールド offset をビルド時に検証する。
+- `CreateBuffer` が失敗した場合は対象 Buffer 名、ByteWidth、HRESULT を startup.log に記録する。
 
 ## 6. RenderSystem
 
@@ -463,6 +476,7 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 - 各 LUT の生成と Shader Resource / Unordered Access の切り替え。
 - Render Method A/B/C/D の出力。
 - Static LUT cache load / invalidation。
+- FrameCB / AtmosphereCB の C++ size / offset が HLSL cbuffer packing と一致し、ByteWidth が16バイト境界にあること。
 - Timestamp query の非同期回収。
 - B vs D の MAE / RMSE / Maximum Absolute Error。
 - A vs D の Linear HDR 比較。解析解像度はアスペクト比を維持した最大 1920 x 1080。

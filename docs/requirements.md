@@ -1,7 +1,7 @@
 # DesktopWorld 要件定義
 
-- 文書バージョン: 1.5
-- 状態: layered child window の実行マニフェスト要件を明記
+- 文書バージョン: 1.6
+- 状態: D3D11 定数バッファの16バイト境界・HLSL packing 要件を明記
 - 対象: Windows デスクトップ背景描画アプリケーション
 - 描画 API: Win32 / Direct3D 11
 
@@ -122,6 +122,7 @@ A～D は同一の大気モデル・Static LUTを共有する。A は事前計�
 5. 太陽高度 -12°～+12° を重点的に検証する。
 6. 太陽位置、サンプルスケジュール、補間係数、設定保存・再読み込み、Render Pass順序は自動テストする。
 7. HLSL 全エントリーポイントを CI でコンパイル検証する。
+8. D3D11 constant buffer の ByteWidth は16バイト境界とし、C++ 構造体のサイズ・フィールド offset を HLSL cbuffer と一致させる。
 
 ## 4. 品質要件
 
@@ -130,6 +131,7 @@ A～D は同一の大気モデル・Static LUTを共有する。A は事前計�
 - OnDemand でデスクトップを描画しない時に不要な GPU 描画を投入しない。
 - 描画ホストが失われた場合、無効 HWND へ描画し続けない。
 - 設定不正、GPU リソース作成失敗、デスクトップホスト取得失敗を識別可能にする。
+- D3D11 constant buffer の作成失敗時に Buffer 名、ByteWidth、HRESULT を識別可能にする。
 - Release ビルドは Debug UI がなくても設定ファイルから動作できる。
 
 ## 5. 初期スコープ外
