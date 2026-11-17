@@ -596,7 +596,7 @@ namespace desktopworld
             worker_window = desktop_host.find_desktop_parent();
             if (worker_window == nullptr)
             {
-                return fail_initialization_win32(
+                return fail_initialization(
                     L"find_desktop_parent (WorkerW not found)");
             }
 
