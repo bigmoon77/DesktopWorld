@@ -29,6 +29,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT m
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -40,6 +41,48 @@ namespace desktopworld
     {
         constexpr wchar_t desktop_class_name[] = L"DesktopWorldDesktopWindow";
         constexpr wchar_t debug_class_name[] = L"DesktopWorldDebugWindow";
+        std::filesystem::path startup_log_path()
+        {
+            wchar_t local_app_data[MAX_PATH]{};
+            const HRESULT result = SHGetFolderPathW(
+                nullptr,
+                CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE,
+                nullptr,
+                SHGFP_TYPE_CURRENT,
+                local_app_data);
+            if (FAILED(result))
+            {
+                return {};
+            }
+
+            return std::filesystem::path(local_app_data) /
+                L"DesktopWorld" / L"Logs" / L"startup.log";
+        }
+
+        void write_startup_log(const std::wstring& message)
+        {
+            OutputDebugStringW(message.c_str());
+            OutputDebugStringW(L"\n");
+
+            const std::filesystem::path path = startup_log_path();
+            if (path.empty())
+            {
+                return;
+            }
+
+            std::error_code error;
+            std::filesystem::create_directories(path.parent_path(), error);
+            if (error)
+            {
+                return;
+            }
+
+            std::wofstream file(path, std::ios::out | std::ios::app);
+            if (file.is_open())
+            {
+                file << message << L"\n";
+            }
+        }
         std::int64_t system_time_to_unix_seconds(const SYSTEMTIME& time)
         {
             FILETIME file_time{};
@@ -156,6 +199,7 @@ namespace desktopworld
     struct desktop_app::implementation
     {
         HINSTANCE instance = nullptr;
+        std::wstring initialization_error{};
         HWND desktop_window = nullptr;
         HWND debug_window = nullptr;
         HWND worker_window = nullptr;
@@ -246,6 +290,31 @@ namespace desktopworld
         float twilight_fps = 15.0f;
 #endif
 
+        bool fail_initialization(
+            const wchar_t* stage,
+            const HRESULT result = S_OK)
+        {
+            std::wostringstream message;
+            message << L"DesktopWorld startup failure: " << stage;
+            if (FAILED(result))
+            {
+                message << L" (HRESULT=0x"
+                    << std::hex << std::uppercase
+                    << static_cast<unsigned long>(result) << L")";
+            }
+            initialization_error = message.str();
+            write_startup_log(initialization_error);
+            return false;
+        }
+
+        bool fail_initialization_win32(
+            const wchar_t* stage,
+            const DWORD error = GetLastError())
+        {
+            const HRESULT result = HRESULT_FROM_WIN32(
+                error == ERROR_SUCCESS ? ERROR_GEN_FAILURE : error);
+            return fail_initialization(stage, result);
+        }
         static LRESULT CALLBACK window_proc(
             HWND window,
             UINT message,
