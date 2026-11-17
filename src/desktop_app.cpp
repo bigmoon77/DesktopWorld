@@ -546,7 +546,9 @@ namespace desktopworld
             const DWORD mapping_error = GetLastError();
             if (mapping_error != ERROR_SUCCESS)
             {
-                return false;
+                return fail_initialization_win32(
+                    L"MapWindowPoints (virtual desktop to WorkerW)",
+                    mapping_error);
             }
 
             desktop_parent_x = corners[0].x;
@@ -555,7 +557,8 @@ namespace desktopworld
             RECT parent_client{};
             if (!GetClientRect(worker_window, &parent_client))
             {
-                return false;
+                return fail_initialization_win32(
+                    L"GetClientRect (WorkerW)");
             }
 
             const int mapped_width = corners[1].x - corners[0].x;
