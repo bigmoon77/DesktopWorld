@@ -27,6 +27,39 @@ namespace desktopworld
         constexpr unsigned int transmittance_height = 64;
         constexpr DXGI_FORMAT lut_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
+        void append_startup_log(const std::string& message)
+        {
+            OutputDebugStringA(message.c_str());
+            OutputDebugStringA("\\n");
+
+            wchar_t local_app_data[MAX_PATH]{};
+            if (FAILED(SHGetFolderPathW(
+                nullptr,
+                CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE,
+                nullptr,
+                SHGFP_TYPE_CURRENT,
+                local_app_data)))
+            {
+                return;
+            }
+
+            const std::filesystem::path path =
+                std::filesystem::path(local_app_data) /
+                L"DesktopWorld" / L"Logs" / L"startup.log";
+            std::error_code error;
+            std::filesystem::create_directories(path.parent_path(), error);
+            if (error)
+            {
+                return;
+            }
+
+            std::ofstream file(path, std::ios::out | std::ios::app);
+            if (file.is_open())
+            {
+                file << message << "\\n";
+            }
+        }
+
         void set_float3(float (&destination)[3], const DirectX::XMFLOAT3& source)
         {
             destination[0] = source.x;
@@ -664,10 +697,26 @@ namespace desktopworld
         _context = context;
         _profiler.initialize(device, context);
 
-        if (!create_shaders(shader_path) ||
-            !create_constant_buffers() ||
-            !create_textures())
+        if (!create_shaders(shader_path))
         {
+            append_startup_log(
+                "AtmosphereRenderer: create_shaders failed. Check shader path and compiler output.");
+            shutdown();
+            return false;
+        }
+
+        if (!create_constant_buffers())
+        {
+            append_startup_log(
+                "AtmosphereRenderer: create_constant_buffers failed.");
+            shutdown();
+            return false;
+        }
+
+        if (!create_textures())
+        {
+            append_startup_log(
+                "AtmosphereRenderer: create_textures failed. Check D3D11 resource limits / device state.");
             shutdown();
             return false;
         }
@@ -1505,6 +1554,9 @@ namespace desktopworld
         {
             if (!create_compute(compute_entries[index], compute_shaders[index]))
             {
+                append_startup_log(
+                    std::string("AtmosphereRenderer: failed to create compute shader: ") +
+                    compute_entries[index]);
                 return false;
             }
         }
@@ -1513,24 +1565,45 @@ namespace desktopworld
             path.c_str(),
             "VS_Fullscreen",
             "vs_5_0",
-            bytecode.ReleaseAndGetAddressOf()) ||
-            FAILED(_device->CreateVertexShader(
-                bytecode->GetBufferPointer(),
-                bytecode->GetBufferSize(),
-                nullptr,
-                _fullscreen_vs.GetAddressOf())))
+            bytecode.ReleaseAndGetAddressOf()))
         {
+            append_startup_log("AtmosphereRenderer: failed to compile VS_Fullscreen.");
+            return false;
+        }
+        const HRESULT vertex_shader_result = _device->CreateVertexShader(
+            bytecode->GetBufferPointer(),
+            bytecode->GetBufferSize(),
+            nullptr,
+            _fullscreen_vs.GetAddressOf());
+        if (FAILED(vertex_shader_result))
+        {
+            std::ostringstream message;
+            message << "AtmosphereRenderer: CreateVertexShader failed. HRESULT=0x"
+                << std::hex << std::uppercase
+                << static_cast<unsigned long>(vertex_shader_result);
+            append_startup_log(message.str());
             return false;
         }
 
-        if (!create_pixel("PS_Direct", _direct_ps.GetAddressOf()) ||
-            !create_pixel("PS_SkyCurrent", _current_ps.GetAddressOf()) ||
-            !create_pixel("PS_SkyPair", _pair_ps.GetAddressOf()) ||
-            !create_pixel("PS_SkyFinal", _final_ps.GetAddressOf()) ||
-            !create_pixel("PS_DirectRadiance", _direct_radiance_ps.GetAddressOf()) ||
-            !create_pixel("PS_SkyFinalRadiance", _final_radiance_ps.GetAddressOf()))
+        const std::array<std::pair<const char*, ID3D11PixelShader**>, 6> pixel_entries =
+        {{
+            { "PS_Direct", _direct_ps.GetAddressOf() },
+            { "PS_SkyCurrent", _current_ps.GetAddressOf() },
+            { "PS_SkyPair", _pair_ps.GetAddressOf() },
+            { "PS_SkyFinal", _final_ps.GetAddressOf() },
+            { "PS_DirectRadiance", _direct_radiance_ps.GetAddressOf() },
+            { "PS_SkyFinalRadiance", _final_radiance_ps.GetAddressOf() }
+        }};
+
+        for (const auto& entry : pixel_entries)
         {
-            return false;
+            if (!create_pixel(entry.first, entry.second))
+            {
+                append_startup_log(
+                    std::string("AtmosphereRenderer: failed to create pixel shader: ") +
+                    entry.first);
+                return false;
+            }
         }
 
         D3D11_SAMPLER_DESC sampler_description{};
@@ -1799,10 +1872,18 @@ namespace desktopworld
 
         if (FAILED(result))
         {
+            std::ostringstream message;
+            message << "AtmosphereRenderer: D3DCompileFromFile failed for "
+                << entry_point << " (" << target << "), HRESULT=0x"
+                << std::hex << std::uppercase
+                << static_cast<unsigned long>(result);
+            append_startup_log(message.str());
             if (errors)
             {
-                OutputDebugStringA(
-                    static_cast<const char*>(errors->GetBufferPointer()));
+                const std::string compiler_message(
+                    static_cast<const char*>(errors->GetBufferPointer()),
+                    errors->GetBufferSize());
+                append_startup_log(compiler_message);
             }
             return false;
         }
