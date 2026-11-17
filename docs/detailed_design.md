@@ -1,8 +1,8 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.7
-- 対応要件: docs/requirements.md v1.3
-- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / layered Progman ホスト構成、HDR品質計測、Bruneton CPU比較仕様の反映版
+- 文書バージョン: 1.8
+- 対応要件: docs/requirements.md v1.4
+- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / raised desktop ホスト構成、HDR品質計測、Bruneton CPU比較仕様の反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -258,7 +258,9 @@ Pass は WorkerW の HWND や settings_store を直接参照しない。
 - Explorer のウィンドウ階層の検出とホスト HWND の取得は workerw_host に閉じ込める。
 - 旧構成では、SHELLDLL_DefView を持つトップレベルウィンドウの後ろにあるトップレベル WorkerW を描画親とする。
 - layered Progman 構成（Windows 11 24H2+）では、Progman を描画親とし、その子である SHELLDLL_DefView と壁紙 WorkerW を検出する。DesktopWorld の layered child window は両者の間に Z オーダー設定する。壁紙 WorkerW 自体を DesktopWorld の親にはしない。
-- Progman の 0x052C メッセージは、必要時に Explorer のホスト生成を促して再探索するために使用する。
+- Progman の WS_EX_NOREDIRECTIONBITMAP を確認して raised desktop を識別する。
+- raised desktop で壁紙 WorkerW が未生成の場合は、Progman へ 0x052C(wParam=0x0D, lParam=0)、続けて 0x052C(wParam=0x0D, lParam=1) を SMTO_ABORTIFHUNG 付きで送り、各メッセージ後に Progman 直下の WorkerW を再探索する。従来構成では 0x052C(0, 0) の生成要求を使用する。
+- SendMessageTimeoutW の戻り値と Win32 エラー、Progman の拡張スタイルを startup.log に記録する。
 - どちらの既知構成も取得できなければエラーを返す。親子関係や Z オーダーが不明なウィンドウへの無条件フォールバックは禁止する。
 - 選択した描画親の client area に仮想デスクトップ矩形全体が包含されることを確認する。
 - TaskbarCreated、ホスト HWND の無効化、定期検査を契機にレイアウト全体を再取得する。
@@ -470,7 +472,7 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 
 ### 11.3 Integration Test
 
-- 対応するデスクトップホストを取得できない場合の安全な終了。
+- 旧 WorkerW、layered Progman、および raised desktop の WorkerW 生成要求を含むホスト取得失敗時の安全な終了。
 - Explorer 再起動後の再接続。
 - モニター追加・削除・配置変更・解像度変更・DPI 変更時に、単一描画面が仮想デスクトップ全体へ再構築されること。再構築失敗時に部分表示へ縮退しないこと。
 - デスクトップアイコン操作とマウス入力の透過。

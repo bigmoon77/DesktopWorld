@@ -33,6 +33,50 @@ namespace desktopworld
             return stream.str();
         }
 
+        bool send_progman_message(
+            const HWND program_manager,
+            const WPARAM wparam,
+            const LPARAM lparam,
+            std::wstring* diagnostics)
+        {
+            DWORD_PTR message_result = 0;
+            SetLastError(ERROR_SUCCESS);
+
+            const LRESULT message_status = SendMessageTimeoutW(
+                program_manager,
+                0x052C,
+                wparam,
+                lparam,
+                SMTO_ABORTIFHUNG,
+                1000,
+                &message_result);
+
+            const DWORD message_error = GetLastError();
+
+            std::wostringstream message;
+            message << L"Progman 0x052C(wParam=0x"
+                << std::hex << std::uppercase
+                << static_cast<ULONG_PTR>(wparam)
+                << L", lParam=0x"
+                << static_cast<ULONG_PTR>(lparam)
+                << L")";
+
+            if (message_status == 0)
+            {
+                message << L" failed with Win32 error "
+                    << std::dec << message_error;
+            }
+            else
+            {
+                message << L" completed; result=0x"
+                    << std::hex << std::uppercase
+                    << static_cast<ULONG_PTR>(message_result);
+            }
+
+            append_diagnostic(diagnostics, message.str());
+            return message_status != 0;
+        }
+
         bool find_progman_layered_layout(
             const HWND program_manager,
             desktop_host_layout& layout,
@@ -192,63 +236,36 @@ namespace desktopworld
             append_diagnostic(
                 diagnostics,
                 L"Progman was not found");
-        }
-        else
-        {
-            append_diagnostic(
-                diagnostics,
-                L"Progman=" + format_window_handle(program_manager));
-
-            if (find_progman_layered_layout(
-                program_manager,
-                layout,
-                diagnostics))
-            {
-                return true;
-            }
-        }
-
-        // Older Explorer layouts use a top-level WorkerW sibling after
-        // the window that owns SHELLDLL_DefView.
-        if (find_legacy_desktop_parent(layout, diagnostics))
-        {
-            return true;
-        }
-
-        if (program_manager == nullptr)
-        {
-            append_diagnostic(
-                diagnostics,
-                L"desktop host was not found and Progman is unavailable");
             return false;
         }
 
-        // Ask Explorer to create the wallpaper WorkerW, then retry both
-        // the Windows 11 24H2+ child layout and the legacy sibling layout.
-        SetLastError(ERROR_SUCCESS);
-        DWORD_PTR message_result = 0;
-        const LRESULT message_status = SendMessageTimeoutW(
-            program_manager,
-            0x052C,
-            0,
-            0,
-            SMTO_ABORTIFHUNG,
-            1000,
-            &message_result);
+        append_diagnostic(
+            diagnostics,
+            L"Progman=" + format_window_handle(program_manager));
 
-        if (message_status == 0)
+        SetLastError(ERROR_SUCCESS);
+        const LONG_PTR program_manager_style = GetWindowLongPtrW(
+            program_manager,
+            GWL_EXSTYLE);
+        const DWORD style_error = GetLastError();
+
+        const bool raised_desktop =
+            (program_manager_style & WS_EX_NOREDIRECTIONBITMAP) != 0;
+
+        std::wostringstream style_message;
+        style_message << L"Progman extended style=0x"
+            << std::hex << std::uppercase
+            << static_cast<ULONG_PTR>(program_manager_style)
+            << L", WS_EX_NOREDIRECTIONBITMAP="
+            << (raised_desktop ? L"true" : L"false");
+
+        if (program_manager_style == 0 && style_error != ERROR_SUCCESS)
         {
-            append_diagnostic(
-                diagnostics,
-                L"Progman 0x052C request failed with Win32 error " +
-                std::to_wstring(GetLastError()));
+            style_message << L", GetWindowLongPtrW error="
+                << std::dec << style_error;
         }
-        else
-        {
-            append_diagnostic(
-                diagnostics,
-                L"Progman 0x052C request completed");
-        }
+
+        append_diagnostic(diagnostics, style_message.str());
 
         if (find_progman_layered_layout(
             program_manager,
@@ -258,14 +275,75 @@ namespace desktopworld
             return true;
         }
 
+        // Older Explorer layouts may already have a top-level WorkerW
+        // following the window that owns SHELLDLL_DefView.
         if (find_legacy_desktop_parent(layout, diagnostics))
         {
             return true;
         }
 
+        if (raised_desktop)
+        {
+            // On the raised desktop, Progman owns a layered ShellView and
+            // creates the wallpaper WorkerW only after these parameterized
+            // shell messages. The legacy (0, 0) message alone can complete
+            // without creating that child.
+            send_progman_message(
+                program_manager,
+                static_cast<WPARAM>(0x0D),
+                static_cast<LPARAM>(0),
+                diagnostics);
+
+            if (find_progman_layered_layout(
+                program_manager,
+                layout,
+                diagnostics))
+            {
+                return true;
+            }
+
+            send_progman_message(
+                program_manager,
+                static_cast<WPARAM>(0x0D),
+                static_cast<LPARAM>(1),
+                diagnostics);
+
+            if (find_progman_layered_layout(
+                program_manager,
+                layout,
+                diagnostics))
+            {
+                return true;
+            }
+        }
+        else
+        {
+            // Preserve the legacy creation path on older Explorer layouts.
+            send_progman_message(
+                program_manager,
+                static_cast<WPARAM>(0),
+                static_cast<LPARAM>(0),
+                diagnostics);
+
+            if (find_progman_layered_layout(
+                program_manager,
+                layout,
+                diagnostics))
+            {
+                return true;
+            }
+
+            if (find_legacy_desktop_parent(layout, diagnostics))
+            {
+                return true;
+            }
+        }
+
         append_diagnostic(
             diagnostics,
-            L"desktop host was not found in either known window layout");
+            raised_desktop
+                ? L"desktop host was not found after raised-desktop activation"
+                : L"desktop host was not found in either known window layout");
         return false;
     }
 }

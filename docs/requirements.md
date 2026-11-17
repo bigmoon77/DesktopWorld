@@ -1,7 +1,7 @@
 # DesktopWorld 要件定義
 
-- 文書バージョン: 1.3
-- 状態: デスクトップホストの旧構成・layered Progman 構成を明記
+- 文書バージョン: 1.4
+- 状態: raised desktop の WorkerW 生成手順を明記
 - 対象: Windows デスクトップ背景描画アプリケーション
 - 描画 API: Win32 / Direct3D 11
 
@@ -31,7 +31,7 @@ Windows のデスクトップアイコン背面に、時刻・季節・観測地
 1. デスクトップアイコンの背面に描画する。
 2. 描画ウィンドウはフォーカスを奪わず、通常のデスクトップ操作を妨げない。
 3. デスクトップホストの取得・親子関係・Z オーダー・ウィンドウ破棄を Platform 層へ隔離する。
-4. 旧構成ではアイコンを含む SHELLDLL_DefView の後ろにあるトップレベル WorkerW を使用する。Windows 11 24H2+ の layered Progman 構成では Progman を親とし、独自の layered child window を SHELLDLL_DefView と壁紙 WorkerW の間へ配置する。
+4. 旧構成ではアイコンを含む SHELLDLL_DefView の後ろにあるトップレベル WorkerW を使用する。Windows 11 24H2+ の raised desktop では Progman の WS_EX_NOREDIRECTIONBITMAP を検出し、0x052C の wParam=0x0D / lParam=0 と 1 を送って壁紙 WorkerW の生成を促したうえで、Progman を親とする独自の layered child window を SHELLDLL_DefView と壁紙 WorkerW の間へ配置する。
 5. 安全なデスクトップホスト構成を取得できない場合は、誤った Z オーダーへフォールバックせずエラーを通知する。
 6. モニターを列挙し、仮想デスクトップ全体を1つの連続した描画面で覆う。全モニターに同じ空の環境を表示する。
 7. 選択したデスクトップホストのクライアント領域が仮想デスクトップ全体を包含しない場合は、部分表示へフォールバックせずエラーにする。
