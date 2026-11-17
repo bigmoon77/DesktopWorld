@@ -6,9 +6,19 @@
 
 namespace desktopworld
 {
+    struct desktop_host_layout
+    {
+        HWND parent_window = nullptr;
+        HWND shell_view_window = nullptr;
+        HWND wallpaper_window = nullptr;
+        bool uses_progman_layered_layout = false;
+    };
+
     class workerw_host
     {
     public:
-        HWND find_desktop_parent(std::wstring* diagnostics = nullptr) const;
+        bool find_desktop_parent(
+            desktop_host_layout& layout,
+            std::wstring* diagnostics = nullptr) const;
     };
 }
