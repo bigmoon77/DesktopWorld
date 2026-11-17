@@ -33,24 +33,87 @@ namespace desktopworld
             return stream.str();
         }
 
-        struct legacy_search_context
+        bool find_progman_layered_layout(
+            const HWND program_manager,
+            desktop_host_layout& layout,
+            std::wstring* diagnostics)
         {
-            HWND worker = nullptr;
-            unsigned int shell_view_parent_count = 0;
-            unsigned int child_worker_count = 0;
-            unsigned int sibling_worker_count = 0;
-        };
+            if (program_manager == nullptr)
+            {
+                return false;
+            }
 
-        HWND find_legacy_desktop_parent(std::wstring* diagnostics)
+            const HWND shell_view = FindWindowExW(
+                program_manager,
+                nullptr,
+                L"SHELLDLL_DefView",
+                nullptr);
+
+            if (shell_view == nullptr)
+            {
+                append_diagnostic(
+                    diagnostics,
+                    L"Progman has no direct SHELLDLL_DefView child");
+                return false;
+            }
+
+            HWND wallpaper = FindWindowExW(
+                program_manager,
+                shell_view,
+                L"WorkerW",
+                nullptr);
+
+            if (wallpaper == nullptr)
+            {
+                wallpaper = FindWindowExW(
+                    program_manager,
+                    nullptr,
+                    L"WorkerW",
+                    nullptr);
+            }
+
+            if (wallpaper == nullptr)
+            {
+                append_diagnostic(
+                    diagnostics,
+                    L"Progman has SHELLDLL_DefView but no child WorkerW");
+                return false;
+            }
+
+            layout.parent_window = program_manager;
+            layout.shell_view_window = shell_view;
+            layout.wallpaper_window = wallpaper;
+            layout.uses_progman_layered_layout = true;
+
+            append_diagnostic(
+                diagnostics,
+                L"detected layered Progman layout: parent=" +
+                format_window_handle(program_manager) +
+                L", SHELLDLL_DefView=" +
+                format_window_handle(shell_view) +
+                L", wallpaper WorkerW=" +
+                format_window_handle(wallpaper));
+
+            return true;
+        }
+
+        bool find_legacy_desktop_parent(
+            desktop_host_layout& layout,
+            std::wstring* diagnostics)
         {
-            legacy_search_context context{};
+            struct search_context
+            {
+                desktop_host_layout layout{};
+                unsigned int shell_view_parent_count = 0;
+                unsigned int sibling_worker_count = 0;
+            } context;
 
             SetLastError(ERROR_SUCCESS);
             const BOOL enumeration_succeeded = EnumWindows(
                 [](HWND window, const LPARAM parameter) -> BOOL
                 {
-                    legacy_search_context* search =
-                        reinterpret_cast<legacy_search_context*>(parameter);
+                    search_context* search =
+                        reinterpret_cast<search_context*>(parameter);
 
                     const HWND shell_view = FindWindowExW(
                         window,
@@ -65,21 +128,6 @@ namespace desktopworld
 
                     ++search->shell_view_parent_count;
 
-                    const HWND child_worker = FindWindowExW(
-                        window,
-                        nullptr,
-                        L"WorkerW",
-                        nullptr);
-
-                    if (child_worker != nullptr)
-                    {
-                        ++search->child_worker_count;
-                        if (search->worker == nullptr)
-                        {
-                            search->worker = child_worker;
-                        }
-                    }
-
                     const HWND sibling_worker = FindWindowExW(
                         nullptr,
                         window,
@@ -89,9 +137,9 @@ namespace desktopworld
                     if (sibling_worker != nullptr)
                     {
                         ++search->sibling_worker_count;
-                        if (search->worker == nullptr)
+                        if (search->layout.parent_window == nullptr)
                         {
-                            search->worker = sibling_worker;
+                            search->layout.parent_window = sibling_worker;
                         }
                     }
 
@@ -103,9 +151,7 @@ namespace desktopworld
                 diagnostics,
                 L"legacy scan: SHELLDLL_DefView parents=" +
                 std::to_wstring(context.shell_view_parent_count) +
-                L", child WorkerW=" +
-                std::to_wstring(context.child_worker_count) +
-                L", sibling WorkerW=" +
+                L", following top-level WorkerW=" +
                 std::to_wstring(context.sibling_worker_count));
 
             if (!enumeration_succeeded)
@@ -116,21 +162,25 @@ namespace desktopworld
                     std::to_wstring(GetLastError()));
             }
 
-            if (context.worker != nullptr)
+            if (context.layout.parent_window == nullptr)
             {
-                append_diagnostic(
-                    diagnostics,
-                    L"legacy WorkerW=" +
-                    format_window_handle(context.worker));
+                return false;
             }
 
-            return context.worker;
+            layout = context.layout;
+            append_diagnostic(
+                diagnostics,
+                L"detected legacy WorkerW parent=" +
+                format_window_handle(layout.parent_window));
+            return true;
         }
     }
 
-    HWND workerw_host::find_desktop_parent(
+    bool workerw_host::find_desktop_parent(
+        desktop_host_layout& layout,
         std::wstring* diagnostics) const
     {
+        layout = {};
         if (diagnostics != nullptr)
         {
             diagnostics->clear();
@@ -149,46 +199,32 @@ namespace desktopworld
                 diagnostics,
                 L"Progman=" + format_window_handle(program_manager));
 
-            // Windows 11 24H2 and later may expose the desktop WorkerW
-            // as a child of Progman instead of a top-level sibling.
-            HWND worker = FindWindowExW(
+            if (find_progman_layered_layout(
                 program_manager,
-                nullptr,
-                L"WorkerW",
-                nullptr);
-
-            if (worker != nullptr)
+                layout,
+                diagnostics))
             {
-                append_diagnostic(
-                    diagnostics,
-                    L"found Progman child WorkerW=" +
-                    format_window_handle(worker));
-                return worker;
+                return true;
             }
-
-            append_diagnostic(
-                diagnostics,
-                L"no direct WorkerW child under Progman");
         }
 
-        // Older Explorer layouts place the wallpaper WorkerW after the
-        // top-level window that owns SHELLDLL_DefView.
-        HWND worker = find_legacy_desktop_parent(diagnostics);
-        if (worker != nullptr)
+        // Older Explorer layouts use a top-level WorkerW sibling after
+        // the window that owns SHELLDLL_DefView.
+        if (find_legacy_desktop_parent(layout, diagnostics))
         {
-            return worker;
+            return true;
         }
 
         if (program_manager == nullptr)
         {
             append_diagnostic(
                 diagnostics,
-                L"WorkerW was not found and Progman is unavailable");
-            return nullptr;
+                L"desktop host was not found and Progman is unavailable");
+            return false;
         }
 
-        // Ask Explorer to create the wallpaper host, then inspect both
-        // the newer child-window layout and the legacy top-level layout.
+        // Ask Explorer to create the wallpaper WorkerW, then retry both
+        // the Windows 11 24H2+ child layout and the legacy sibling layout.
         SetLastError(ERROR_SUCCESS);
         DWORD_PTR message_result = 0;
         const LRESULT message_status = SendMessageTimeoutW(
@@ -214,34 +250,22 @@ namespace desktopworld
                 L"Progman 0x052C request completed");
         }
 
-        worker = FindWindowExW(
+        if (find_progman_layered_layout(
             program_manager,
-            nullptr,
-            L"WorkerW",
-            nullptr);
-
-        if (worker != nullptr)
+            layout,
+            diagnostics))
         {
-            append_diagnostic(
-                diagnostics,
-                L"found Progman child WorkerW after request=" +
-                format_window_handle(worker));
-            return worker;
+            return true;
+        }
+
+        if (find_legacy_desktop_parent(layout, diagnostics))
+        {
+            return true;
         }
 
         append_diagnostic(
             diagnostics,
-            L"no direct WorkerW child after request");
-
-        worker = find_legacy_desktop_parent(diagnostics);
-        if (worker != nullptr)
-        {
-            return worker;
-        }
-
-        append_diagnostic(
-            diagnostics,
-            L"WorkerW was not found in either known window layout");
-        return nullptr;
+            L"desktop host was not found in either known window layout");
+        return false;
     }
 }
