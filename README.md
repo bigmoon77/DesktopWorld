@@ -28,6 +28,10 @@ Windows desktop background renderer using Win32 and Direct3D 11.
 - Core unit tests for solar position, sample scheduling (including pre-1970 timestamps), environment sample caching, settings round-trip, frame scheduling, and RenderPass ordering.
 - HLSL entry-point compilation validation as part of the Windows build (17 entry points).
 
+## Japanese rendering and atmosphere math guide
+
+See [docs/rendering_and_atmosphere_math_ja.md](docs/rendering_and_atmosphere_math_ja.md) for the complete Japanese explanation of the CPU/GPU split, solar-position equations, time-sample scheduling, atmospheric density, Beer-Lambert transmittance, Rayleigh/Mie phase functions, single and multiple scattering, LUT packing and generation, temporal blending, tone mapping, and the A-D render paths.
+
 ## Build
 
 Requirements:
