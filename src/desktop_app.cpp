@@ -31,9 +31,11 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT m
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace desktopworld
 {
@@ -58,6 +60,96 @@ namespace desktopworld
             return std::filesystem::path(local_app_data) /
                 L"DesktopWorld" / L"Logs" / L"startup.log";
         }
+
+#ifdef DW_ENABLE_DEBUG_UI
+        void write_startup_log(const std::wstring& message);
+
+        bool load_japanese_debug_font(
+            std::vector<unsigned char>& font_data)
+        {
+            wchar_t windows_directory[MAX_PATH]{};
+            const UINT directory_length = GetWindowsDirectoryW(
+                windows_directory,
+                MAX_PATH);
+            if (directory_length == 0 || directory_length >= MAX_PATH)
+            {
+                write_startup_log(
+                    L"Debug UI: failed to locate the Windows Fonts directory.");
+                return false;
+            }
+
+            const std::filesystem::path font_directory =
+                std::filesystem::path(windows_directory) / L"Fonts";
+            static constexpr const wchar_t* font_names[] =
+            {
+                L"YuGothR.ttc",
+                L"Yugothm.ttc",
+                L"Meiryo.ttc",
+                L"msgothic.ttc",
+                L"BIZ-UDGothicR.ttc"
+            };
+
+            ImGuiIO& io = ImGui::GetIO();
+            for (const wchar_t* font_name : font_names)
+            {
+                const std::filesystem::path font_path =
+                    font_directory / font_name;
+                std::ifstream font_file(
+                    font_path,
+                    std::ios::binary | std::ios::ate);
+                if (!font_file.is_open())
+                {
+                    continue;
+                }
+
+                const std::streamoff font_size = font_file.tellg();
+                if (font_size <= 0 ||
+                    font_size > std::numeric_limits<int>::max())
+                {
+                    continue;
+                }
+
+                font_data.resize(static_cast<std::size_t>(font_size));
+                font_file.seekg(0, std::ios::beg);
+                font_file.read(
+                    reinterpret_cast<char*>(font_data.data()),
+                    static_cast<std::streamsize>(font_size));
+                if (!font_file)
+                {
+                    font_data.clear();
+                    continue;
+                }
+
+                ImFontConfig font_config{};
+                font_config.FontDataOwnedByAtlas = false;
+                font_config.OversampleH = 2;
+                font_config.OversampleV = 1;
+                font_config.PixelSnapH = true;
+
+                ImFont* japanese_font = io.Fonts->AddFontFromMemoryTTF(
+                    font_data.data(),
+                    static_cast<int>(font_size),
+                    17.0f,
+                    &font_config,
+                    io.Fonts->GetGlyphRangesJapanese());
+                if (japanese_font != nullptr)
+                {
+                    io.FontDefault = japanese_font;
+                    write_startup_log(
+                        L"Debug UI: Japanese font loaded: " +
+                        font_path.wstring());
+                    return true;
+                }
+
+                font_data.clear();
+            }
+
+            write_startup_log(
+                L"Debug UI: no supported Japanese font found in the Windows Fonts directory. "
+                L"Install Yu Gothic, Meiryo, or MS Gothic to display Japanese UI text.");
+            return false;
+        }
+#endif
 
         void write_startup_log(const std::wstring& message)
         {
@@ -227,6 +319,7 @@ namespace desktopworld
 
 #ifdef DW_ENABLE_DEBUG_UI
         bool pending_time_dirty = false;
+        std::vector<unsigned char> japanese_font_data{};
 #endif
 
         unsigned int desktop_width = 0;
@@ -827,7 +920,7 @@ namespace desktopworld
             debug_window = CreateWindowExW(
                 0,
                 debug_class_name,
-                L"DesktopWorld Debug",
+                L"DesktopWorld デバッグ",
                 WS_OVERLAPPEDWINDOW,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
@@ -1130,6 +1223,7 @@ namespace desktopworld
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
             ImGui::StyleColorsDark();
+            load_japanese_debug_font(japanese_font_data);
 
             if (!ImGui_ImplWin32_Init(debug_window))
             {
@@ -1353,20 +1447,20 @@ namespace desktopworld
             ImGui::NewFrame();
 
             ImGui::SetNextWindowSize(
-                ImVec2(580.0f, 700.0f),
+                ImVec2(780.0f, 900.0f),
                 ImGuiCond_FirstUseEver);
 
-            ImGui::Begin("DesktopWorld Debug");
+            ImGui::Begin("DesktopWorld デバッグ");
 
             if (ImGui::BeginTabBar("DebugTabs"))
             {
-                if (ImGui::BeginTabItem("Frame"))
+                if (ImGui::BeginTabItem("フレーム"))
                 {
-                    const char* frame_modes[] = { "Adaptive", "Fixed", "OnDemand" };
+                    const char* frame_modes[] = { "適応", "固定", "オンデマンド" };
                     int frame_mode_index = static_cast<int>(selected_frame_mode);
 
                     if (ImGui::Combo(
-                        "Frame mode",
+                        "フレーム更新モード",
                         &frame_mode_index,
                         frame_modes,
                         IM_ARRAYSIZE(frame_modes)))
@@ -1379,9 +1473,9 @@ namespace desktopworld
 
                     bool adaptive_fps_changed = false;
                     adaptive_fps_changed |= ImGui::SliderFloat(
-                        "Base FPS", &base_fps, 1.0f, 30.0f);
+                        "通常時 FPS", &base_fps, 1.0f, 30.0f);
                     adaptive_fps_changed |= ImGui::SliderFloat(
-                        "Twilight FPS", &twilight_fps, 1.0f, 30.0f);
+                        "薄明時 FPS", &twilight_fps, 1.0f, 30.0f);
                     if (adaptive_fps_changed)
                     {
                         frames.set_adaptive_fps(base_fps, twilight_fps);
@@ -1390,37 +1484,37 @@ namespace desktopworld
                     }
 
                     if (ImGui::SliderFloat(
-                        "Fixed FPS", &fixed_fps, 1.0f, 30.0f))
+                        "固定 FPS", &fixed_fps, 1.0f, 30.0f))
                     {
                         frames.set_fixed_fps(fixed_fps);
                         settings.fixed_fps = fixed_fps;
                     }
 
-                    ImGui::Text("Target FPS: %.2f", frames.target_fps());
+                    ImGui::Text("目標 FPS: %.2f", frames.target_fps());
 
-                    if (ImGui::Button("Render Once"))
+                    if (ImGui::Button("1フレーム描画"))
                     {
                         frames.request_frame();
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Update Environment"))
+                    if (ImGui::Button("環境を更新"))
                     {
                         environment_dirty = true;
                     }
-                    if (ImGui::Button("Update Environment + Render Once"))
+                    if (ImGui::Button("環境を更新して1フレーム描画"))
                     {
                         environment_dirty = true;
                         frames.request_frame();
                     }
 
                     ImGui::Separator();
-                    ImGui::Text("Frame mode separates screen rendering from LUT generation.");
+                    ImGui::Text("フレーム更新モードでは、画面描画と LUT 生成を個別に制御します。");
                     ImGui::EndTabItem();
                 }
 
-                if (ImGui::BeginTabItem("Solar"))
+                if (ImGui::BeginTabItem("太陽"))
                 {
-                    if (ImGui::Checkbox("Use fixed UTC time", &fixed_time_enabled))
+                    if (ImGui::Checkbox("UTC 時刻を固定する", &fixed_time_enabled))
                     {
                         if (fixed_time_enabled)
                         {
@@ -1438,17 +1532,17 @@ namespace desktopworld
                     if (fixed_time_enabled)
                     {
                         bool time_changed = false;
-                        time_changed |= ImGui::InputInt("Year", &utc_year);
-                        time_changed |= ImGui::InputInt("Month", &utc_month);
-                        time_changed |= ImGui::InputInt("Day", &utc_day);
-                        time_changed |= ImGui::InputInt("Hour", &utc_hour);
-                        time_changed |= ImGui::InputInt("Minute", &utc_minute);
+                        time_changed |= ImGui::InputInt("年", &utc_year);
+                        time_changed |= ImGui::InputInt("月", &utc_month);
+                        time_changed |= ImGui::InputInt("日", &utc_day);
+                        time_changed |= ImGui::InputInt("時", &utc_hour);
+                        time_changed |= ImGui::InputInt("分", &utc_minute);
                         if (time_changed)
                         {
                             pending_time_dirty = true;
                         }
 
-                        if (ImGui::Button("Apply Time"))
+                        if (ImGui::Button("時刻を適用"))
                         {
                             SYSTEMTIME candidate{};
                             candidate.wYear = static_cast<WORD>(std::clamp(utc_year, 1601, 9999));
@@ -1470,16 +1564,16 @@ namespace desktopworld
                             {
                                 ImGui::TextColored(
                                     ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
-                                    "Invalid UTC date/time.");
+                                    "UTC 日時が正しくありません。");
                             }
                         }
                         if (pending_time_dirty)
                         {
                             ImGui::SameLine();
-                            ImGui::TextDisabled("Pending time edit");
+                            ImGui::TextDisabled("時刻の変更は未適用です");
                         }
 
-                        if (ImGui::Button("-15 min"))
+                        if (ImGui::Button("-15 分"))
                         {
                             const std::int64_t epoch =
                                 system_time_to_unix_seconds(fixed_time) - 900;
@@ -1494,7 +1588,7 @@ namespace desktopworld
                             frames.request_frame();
                         }
                         ImGui::SameLine();
-                        if (ImGui::Button("+15 min"))
+                        if (ImGui::Button("+15 分"))
                         {
                             const std::int64_t epoch =
                                 system_time_to_unix_seconds(fixed_time) + 900;
@@ -1519,7 +1613,7 @@ namespace desktopworld
                         utc_minute = fixed_time.wMinute;
                     }
 
-                    if (ImGui::InputDouble("Latitude", &latitude, 0.01, 0.1, "%.5f"))
+                    if (ImGui::InputDouble("緯度", &latitude, 0.01, 0.1, "%.5f"))
                     {
                         latitude = std::clamp(latitude, -90.0, 90.0);
                         environment.set_observer_location(latitude, longitude);
@@ -1527,7 +1621,7 @@ namespace desktopworld
                         environment_dirty = true;
                         frames.request_frame();
                     }
-                    if (ImGui::InputDouble("Longitude", &longitude, 0.01, 0.1, "%.5f"))
+                    if (ImGui::InputDouble("経度", &longitude, 0.01, 0.1, "%.5f"))
                     {
                         longitude = std::clamp(longitude, -180.0, 180.0);
                         environment.set_observer_location(latitude, longitude);
@@ -1538,80 +1632,80 @@ namespace desktopworld
 
                     ImGui::Separator();
                     ImGui::Text(
-                        "Solar elevation: %.3f deg",
+                        "太陽高度: %.3f 度",
                         current_sun.elevation_degrees);
                     ImGui::Text(
-                        "Solar azimuth: %.3f deg",
+                        "太陽方位角: %.3f 度",
                         current_sun.azimuth_degrees);
                     ImGui::Text(
-                        "Direction: %.4f, %.4f, %.4f",
+                        "太陽方向: %.4f, %.4f, %.4f",
                         current_sun.direction.x,
                         current_sun.direction.y,
                         current_sun.direction.z);
                     ImGui::EndTabItem();
                 }
 
-                if (ImGui::BeginTabItem("Atmosphere"))
+                if (ImGui::BeginTabItem("大気"))
                 {
-                    ImGui::Text("Pending parameters");
+                    ImGui::Text("未適用の大気パラメータ");
                     ImGui::SliderFloat3(
-                        "Rayleigh RGB",
+                        "レイリー散乱係数 RGB",
                         &pending_parameters.rayleigh_scattering.x,
                         0.0f,
                         0.05f,
                         "%.6f");
                     ImGui::SliderFloat3(
-                        "Mie scattering RGB",
+                        "ミー散乱係数 RGB",
                         &pending_parameters.mie_scattering.x,
                         0.0f,
                         0.02f,
                         "%.6f");
                     ImGui::SliderFloat3(
-                        "Mie extinction RGB",
+                        "ミー消散係数 RGB",
                         &pending_parameters.mie_extinction.x,
                         0.0f,
                         0.03f,
                         "%.6f");
                     ImGui::SliderFloat(
-                        "Rayleigh scale height",
+                        "レイリースケールハイト (km)",
                         &pending_parameters.rayleigh_scale_height_km,
                         1.0f,
                         20.0f);
                     ImGui::SliderFloat(
-                        "Mie scale height",
+                        "ミースケールハイト (km)",
                         &pending_parameters.mie_scale_height_km,
                         0.2f,
                         5.0f);
                     ImGui::SliderFloat(
-                        "Mie anisotropy g",
+                        "ミー異方性 g",
                         &pending_parameters.mie_g,
                         -0.98f,
                         0.98f);
                     ImGui::SliderFloat3(
-                        "Ozone absorption RGB",
+                        "オゾン吸収係数 RGB",
                         &pending_parameters.ozone_absorption.x,
                         0.0f,
                         0.005f,
                         "%.6f");
                     ImGui::SliderFloat(
-                        "Ozone center height",
+                        "オゾン層中心高度 (km)",
                         &pending_parameters.ozone_center_height_km,
                         5.0f,
                         60.0f);
                     ImGui::SliderFloat(
-                        "Ozone half width",
+                        "オゾン層半幅 (km)",
                         &pending_parameters.ozone_half_width_km,
                         1.0f,
                         40.0f);
                     ImGui::SliderFloat3(
-                        "Ground albedo RGB",
+                        "地表アルベド RGB",
                         &pending_parameters.ground_albedo.x,
                         0.0f,
                         1.0f);
                     int scattering_order =
                         static_cast<int>(pending_parameters.max_scattering_order);
                     if (ImGui::SliderInt(
-                        "Maximum scattering order",
+                        "最大散乱次数",
                         &scattering_order,
                         2,
                         4))
@@ -1620,12 +1714,12 @@ namespace desktopworld
                             static_cast<std::uint32_t>(scattering_order);
                     }
                     ImGui::SliderFloat(
-                        "Solar intensity",
+                        "太陽光強度",
                         &pending_parameters.solar_intensity,
                         1.0f,
                         50.0f);
 
-                    if (ImGui::Button("Apply Atmosphere and Rebuild LUTs"))
+                    if (ImGui::Button("大気設定を適用して LUT を再生成"))
                     {
                         atmosphere.set_atmosphere_parameters(pending_parameters);
                         atmosphere.set_exposure(pending_parameters.exposure);
@@ -1634,47 +1728,46 @@ namespace desktopworld
                         frames.request_frame();
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Reset Parameters"))
+                    if (ImGui::Button("パラメータを初期値に戻す"))
                     {
                         pending_parameters = atmosphere_parameters{};
                     }
 
                     ImGui::Separator();
                     ImGui::SliderFloat(
-                        "Exposure",
+                        "露出",
                         &pending_parameters.exposure,
                         0.1f,
                         4.0f);
-                    if (ImGui::Button("Apply Exposure"))
+                    if (ImGui::Button("露出を適用"))
                     {
                         atmosphere.set_exposure(pending_parameters.exposure);
                         settings.atmosphere.exposure = pending_parameters.exposure;
                         frames.request_frame();
                     }
                     ImGui::Text(
-                        "Scattering order: %u",
+                        "散乱次数: %u",
                         pending_parameters.max_scattering_order);
                     ImGui::TextWrapped(
-                        "Static LUTs use RGB Rayleigh/Mie single scattering and iterative "
-                        "multiple scattering with ozone absorption and diffuse ground "
-                        "reflection. Angular precomputation currently uses 4 x 8 samples; "
-                        "validate image error and startup time before raising quality.");
+                        "Static LUT は RGB のレイリー・ミー単一散乱と、オゾン吸収および地表の拡散反射を含む "
+                        "反復多重散乱を使用します。現在の角度積分サンプル数は 4 x 8 です。"
+                        "品質を上げる前に画像誤差と起動時間を確認してください。");
                     ImGui::EndTabItem();
                 }
 
-                if (ImGui::BeginTabItem("Render"))
+                if (ImGui::BeginTabItem("描画"))
                 {
                     const char* render_methods[] =
                     {
-                        "A: Direct evaluation",
-                        "B: Current Sky View LUT",
-                        "C: Pixel shader blend",
-                        "D: Compute shader blend"
+                        "A: 直接評価",
+                        "B: 現在の Sky View LUT",
+                        "C: ピクセルシェーダー補間",
+                        "D: コンピュートシェーダー補間"
                     };
 
                     int method_index = static_cast<int>(selected_method);
                     if (ImGui::Combo(
-                        "Method",
+                        "描画方式",
                         &method_index,
                         render_methods,
                         IM_ARRAYSIZE(render_methods)))
@@ -1685,15 +1778,15 @@ namespace desktopworld
                         frames.request_frame();
                     }
 
-                    ImGui::Text("Sky LUT: %u x %u",
+                    ImGui::Text("Sky LUT 解像度: %u x %u",
                         atmosphere_renderer::sky_width,
                         atmosphere_renderer::sky_height);
                     const char* interval_options[] =
                     {
-                        "Automatic (solar elevation)",
-                        "60 minutes",
-                        "30 minutes",
-                        "15 minutes"
+                        "太陽高度に応じて自動",
+                        "60 分",
+                        "30 分",
+                        "15 分"
                     };
                     int interval_index = 0;
                     if (sample_interval_override_seconds == 3600)
@@ -1709,7 +1802,7 @@ namespace desktopworld
                         interval_index = 3;
                     }
                     if (ImGui::Combo(
-                        "Sample interval",
+                        "サンプル間隔",
                         &interval_index,
                         interval_options,
                         IM_ARRAYSIZE(interval_options)))
@@ -1724,46 +1817,46 @@ namespace desktopworld
                         frames.request_frame();
                     }
                     ImGui::Text(
-                        "Active interval: %lld min",
+                        "現在のサンプル間隔: %lld 分",
                         static_cast<long long>(sample_interval / 60));
-                    ImGui::Text("Blend factor: %.4f", blend_factor);
+                    ImGui::Text("補間係数: %.4f", blend_factor);
 
-                    if (ImGui::Button("Update Sample Pair"))
+                    if (ImGui::Button("サンプルペアを更新"))
                     {
                         environment_dirty = true;
                     }
 
                     ImGui::Separator();
-                    if (ImGui::Button("Measure HDR Errors (B vs D / A vs D)"))
+                    if (ImGui::Button("HDR 誤差を計測 (B vs D / A vs D)"))
                     {
                         quality_measure_requested = true;
                         frames.request_frame();
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Capture Linear HDR Sky (PFM)"))
+                    if (ImGui::Button("線形 HDR の空を PFM 形式で保存"))
                     {
                         sky_capture_requested = true;
                         frames.request_frame();
                     }
 
                     ImGui::TextWrapped(
-                        "B vs D compares 256 x 128 linear-HDR LUT pixels. "
-                        "A vs D compares direct evaluation with the upsampled "
-                        "D result on an aspect-preserving grid capped at 1920 x 1080.");
+                        "B vs D は 256 x 128 の線形 HDR LUT ピクセルを比較します。"
+                        "A vs D は直接評価結果と、最大 1920 x 1080 の縦横比を維持した格子へ拡大した "
+                        "D の結果を比較します。");
                     ImGui::TextWrapped(
-                        "Readback is synchronous and may briefly stall the GPU. "
-                        "Both operations run only after an explicit button press.");
+                        "GPU からの読み戻しは同期処理のため、一時的に GPU が停止する場合があります。"
+                        "どちらの計測もボタンを押したときだけ実行します。");
 
                     if (blend_quality_metrics.valid)
                     {
                         ImGui::Text(
-                            "B vs D (%u x %u, %llu pixels)",
+                            "B vs D (%u x %u、%llu ピクセル)",
                             blend_quality_metrics.width,
                             blend_quality_metrics.height,
                             static_cast<unsigned long long>(
                                 blend_quality_metrics.pixel_count));
                         ImGui::Text(
-                            "  MAE %.8g  RMSE %.8g  Max %.8g",
+                            "  平均絶対誤差 %.8g  RMSE %.8g  最大誤差 %.8g",
                             blend_quality_metrics.mean_absolute_error,
                             blend_quality_metrics.root_mean_squared_error,
                             blend_quality_metrics.maximum_absolute_error);
@@ -1772,13 +1865,13 @@ namespace desktopworld
                     if (direct_quality_metrics.valid)
                     {
                         ImGui::Text(
-                            "A vs D (%u x %u, %llu pixels)",
+                            "A vs D (%u x %u、%llu ピクセル)",
                             direct_quality_metrics.width,
                             direct_quality_metrics.height,
                             static_cast<unsigned long long>(
                                 direct_quality_metrics.pixel_count));
                         ImGui::Text(
-                            "  MAE %.8g  RMSE %.8g  Max %.8g",
+                            "  平均絶対誤差 %.8g  RMSE %.8g  最大誤差 %.8g",
                             direct_quality_metrics.mean_absolute_error,
                             direct_quality_metrics.root_mean_squared_error,
                             direct_quality_metrics.maximum_absolute_error);
@@ -1793,57 +1886,57 @@ namespace desktopworld
                         const std::u8string capture_path_utf8 =
                             last_capture_path.u8string();
                         ImGui::TextWrapped(
-                            "Last PFM: %s",
+                            "最終 PFM ファイル: %s",
                             reinterpret_cast<const char*>(
                                 capture_path_utf8.c_str()));
                     }
                     ImGui::EndTabItem();
                 }
 
-                if (ImGui::BeginTabItem("Performance"))
+                if (ImGui::BeginTabItem("パフォーマンス"))
                 {
-                    ImGui::Text("Target FPS: %.2f", frames.target_fps());
-                    ImGui::Text("Measured FPS: %.2f", stats.current_fps);
-                    ImGui::Text("CPU update: %.3f ms", stats.cpu_update_ms);
-                    ImGui::Text("CPU render submit: %.3f ms", stats.cpu_frame_ms);
-                    ImGui::Text("GPU frame: %.3f ms", stats.gpu_frame_ms);
+                    ImGui::Text("目標 FPS: %.2f", frames.target_fps());
+                    ImGui::Text("実測 FPS: %.2f", stats.current_fps);
+                    ImGui::Text("CPU 更新処理: %.3f ms", stats.cpu_update_ms);
+                    ImGui::Text("CPU 描画コマンド発行: %.3f ms", stats.cpu_frame_ms);
+                    ImGui::Text("GPU フレーム時間: %.3f ms", stats.gpu_frame_ms);
                     ImGui::Separator();
-                    ImGui::Text("GPU Static LUT total: %.3f ms", stats.gpu_precompute_ms);
-                    ImGui::Text("  Transmittance: %.3f ms", stats.gpu_transmittance_ms);
-                    ImGui::Text("  Direct irradiance: %.3f ms", stats.gpu_direct_irradiance_ms);
-                    ImGui::Text("  Single scattering: %.3f ms", stats.gpu_single_scattering_ms);
-                    ImGui::Text("  Multiple scattering: %.3f ms", stats.gpu_multiple_scattering_ms);
-                    ImGui::Text("GPU Sky View: %.3f ms", stats.gpu_sky_generation_ms);
-                    ImGui::Text("GPU blend: %.3f ms", stats.gpu_blend_ms);
-                    ImGui::Text("GPU render: %.3f ms", stats.gpu_render_ms);
+                    ImGui::Text("GPU 静的 LUT 生成合計: %.3f ms", stats.gpu_precompute_ms);
+                    ImGui::Text("  透過率 LUT: %.3f ms", stats.gpu_transmittance_ms);
+                    ImGui::Text("  直達放射照度: %.3f ms", stats.gpu_direct_irradiance_ms);
+                    ImGui::Text("  単一散乱: %.3f ms", stats.gpu_single_scattering_ms);
+                    ImGui::Text("  多重散乱: %.3f ms", stats.gpu_multiple_scattering_ms);
+                    ImGui::Text("GPU Sky View 生成: %.3f ms", stats.gpu_sky_generation_ms);
+                    ImGui::Text("GPU 補間処理: %.3f ms", stats.gpu_blend_ms);
+                    ImGui::Text("GPU 描画処理: %.3f ms", stats.gpu_render_ms);
                     ImGui::Separator();
-                    ImGui::Text("Process video memory (DXGI)");
+                    ImGui::Text("プロセスの GPU メモリ使用量 (DXGI)");
                     if (stats.gpu_local_memory_valid)
                     {
                         ImGui::Text(
-                            "  Local: %.1f / %.1f MiB",
+                            "  ローカル: %.1f / %.1f MiB",
                             stats.gpu_local_memory_usage_mb,
                             stats.gpu_local_memory_budget_mb);
                     }
                     else
                     {
-                        ImGui::Text("  Local: unavailable");
+                        ImGui::Text("  ローカル: 取得不可");
                     }
                     if (stats.gpu_non_local_memory_valid)
                     {
                         ImGui::Text(
-                            "  Non-local: %.1f / %.1f MiB",
+                            "  非ローカル: %.1f / %.1f MiB",
                             stats.gpu_non_local_memory_usage_mb,
                             stats.gpu_non_local_memory_budget_mb);
                     }
                     else
                     {
-                        ImGui::Text("  Non-local: unavailable");
+                        ImGui::Text("  非ローカル: 取得不可");
                     }
                     ImGui::TextWrapped(
-                        "DXGI reports current process usage and the OS budget for "
-                        "the selected adapter. This includes all GPU resources owned "
-                        "by this process, not only DesktopWorld's atmosphere textures.");
+                        "DXGI は選択中のアダプターについて、現在のプロセス使用量と OS のメモリ予算を表示します。"
+                        "DesktopWorld の大気テクスチャだけでなく、このプロセスが所有する "
+                        "すべての GPU リソースが含まれます。");
                     ImGui::EndTabItem();
                 }
 
@@ -1887,12 +1980,12 @@ namespace desktopworld
                     blend_quality_metrics = blend_result;
                     direct_quality_metrics = direct_result;
                     diagnostics_message =
-                        "HDR quality measurement completed.";
+                        "HDR 品質計測が完了しました。";
                 }
                 else
                 {
                     diagnostics_message =
-                        "HDR quality measurement failed. Check D3D11 debug output.";
+                        "HDR 品質計測に失敗しました。D3D11 のデバッグ出力を確認してください。";
                 }
             }
 
@@ -1912,12 +2005,12 @@ namespace desktopworld
                 {
                     last_capture_path = capture_path;
                     diagnostics_message =
-                        "Linear HDR Sky View LUT saved as PFM.";
+                        "線形 HDR の Sky View LUT を PFM 形式で保存しました。";
                 }
                 else
                 {
                     diagnostics_message =
-                        "PFM capture failed. Check the output folder and D3D11 state.";
+                        "PFM の保存に失敗しました。出力先フォルダーと D3D11 の状態を確認してください。";
                 }
             }
         }
