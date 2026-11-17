@@ -2,9 +2,10 @@
 
 - 対象ブランチ: `feature/initial-implementation`
 - 基準文書: `docs/requirements.md` v1.7 / `docs/detailed_design.md` v2.1
-- レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、HDR品質計測、Bruneton CPU比較CLIの仕様とコードの照合
+- レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、HDR品質計測、Bruneton CPU比較CLIの仕様とコードの照合、およびユーザー環境での raised desktop 起動・日本語フォント表示確認
 - 結果: **単一仮想デスクトップ描画方式の矛盾を解消。旧 WorkerW と raised desktop のホスト構成、layered child 用の Windows 10 対応マニフェスト、D3D11 定数バッファの HLSL packing 整合を実装。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
-- 未完了: 実際のGPU captureを用いたBruneton比較値の収集、実機での複数モニター / Explorer 復旧検証。
+- 実機確認済み: ユーザー環境の raised desktop で子ウィンドウ生成・定数バッファ生成・Debug UI 日本語フォント読み込み・アプリ初期化完了を startup.log で確認。日本語表示に文字化けがないことも確認済み。
+- 未完了: 実際のGPU captureを用いたBruneton比較値の収集、複数モニター / Explorer 再起動・復旧検証。
 - 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
 ## 1. レビュー対象と前提
@@ -131,10 +132,10 @@
 | O-02 | B vs D補間誤差 | Debug UI からワンショットで Linear HDR の MAE / RMSE / 最大誤差を計測できる | 薄明・緯度・日付の異なる条件で実測結果を収集 |
 | O-03 | A vs D描画経路・空間近似誤差 | 同一 Linear HDR 条件、最大 1920 x 1080 の解析グリッドで計測できる | 複数の出力解像度・太陽高度で実測結果を収集 |
 | O-04 | GPUメモリ | DXGI 1.4 によるプロセス単位 Local / Non-local 使用量・Budget を Debug UI に表示 | 複数GPU / iGPU / dGPU環境で取得可否と挙動を確認 |
-| O-05 | 実機ホスト検証 | 旧 WorkerW / raised desktop のホスト検出、0x052C(0x0D, 1)、layered child 用マニフェストを実装。実機表示検証は未完了 | Windows 10 / Windows 11 24H2+、raised desktop の描画子ウィンドウ生成、Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
+| O-05 | 実機ホスト検証 | 旧 WorkerW / raised desktop のホスト検出、0x052C(0x0D, 1)、layered child 用マニフェストを実装。ユーザー環境で raised desktop の子ウィンドウ生成とアプリ初期化完了を確認 | Explorer 再起動、混在DPI、負座標、モニター抜き差し、複数モニターでの表示を検証 |
 | O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として定義済み。時間追従が必要な場合は Adaptive / Fixed を使う |
-| O-07 | AtmosphereCB 作成 | C++ 側に HLSL にない reserved uint があり、116 bytes の不正な ByteWidth になっていた | C++ / HLSL layout を一致させ112 bytesとし、CreateBuffer failure に HRESULT を記録 | 修正済み・実機再確認待ち |
-| O-08 | Debug UI 日本語表示 | 英語ラベルと日本語フォント未設定 | 全タブ・説明・計測結果を日本語化し、Windows のインストール済み日本語フォントを利用 | 実装済み・実機表示確認待ち |
+| O-07 | AtmosphereCB 作成 | C++ 側に HLSL にない reserved uint があり、116 bytes の不正な ByteWidth になっていた | C++ / HLSL layout を一致させ112 bytesとし、CreateBuffer failure に HRESULT を記録 | 修正済み・実機で生成成功を確認 |
+| O-08 | Debug UI 日本語表示 | 英語ラベルと日本語フォント未設定 | 全タブ・説明・計測結果を日本語化し、Windows のインストール済み日本語フォントを利用 | 完了・Yu Gothic 読み込みと文字化けなしを実機確認 |
 
 ### 5.1 OnDemandの時刻更新
 
@@ -158,7 +159,7 @@ OnDemand は明示的な描画要求がない限り待機し、システム時�
 
 ### 実装
 
-単一 SwapChain の構成とホスト再構築の基本処理は現行コードと一致する。ただし、モニター構成変更・Explorer再起動・混在DPIを含む実機検証は未完了である。
+単一 SwapChain の構成とホスト再構築の基本処理は現行コードと一致する。ユーザー環境では raised desktop の子ウィンドウ生成から Atmosphere 定数バッファ生成、日本語フォント読み込みまで通過し、アプリ初期化完了を確認した。モニター構成変更・Explorer再起動・混在DPIを含む実機検証は継続する。
 
 ### 次工程へ進む条件
 

@@ -62,7 +62,7 @@ If initialization fails, the dialog now identifies the failing stage and (where 
 
 `%LOCALAPPDATA%/DesktopWorld/Logs/startup.log`
 
-Attach that log when reporting a startup failure. It records desktop-host discovery and bounds, Progman extended styles, the parameters and results of 0x052C requests, desktop child-window styles / dimensions / parent HWND, the Win32 error and HRESULT, each constant-buffer's ByteWidth and CreateBuffer HRESULT, SwapChain creation, D3D11 setup, shader compilation, and atmosphere resource initialization failures.
+Attach that log when reporting a startup failure. It records desktop-host discovery and bounds, Progman extended styles, the parameters and results of 0x052C requests, desktop child-window styles / dimensions / parent HWND, the Win32 error and HRESULT, each constant-buffer's ByteWidth and CreateBuffer HRESULT, SwapChain creation, D3D11 setup, shader compilation, and atmosphere resource initialization failures. The log is append-only: earlier failed attempts remain above the latest attempt. A final `DesktopWorld initialization completed.` line indicates that startup initialization succeeded; the Debug UI also records the Japanese font file it loaded.
 
 ## Settings
 On first launch the application creates `%APPDATA%/DesktopWorld/settings.ini`. It stores observer latitude/longitude, render method, frame mode and FPS, sample interval override, exposure, and physical atmosphere parameters. The file can be edited directly in Release builds.
