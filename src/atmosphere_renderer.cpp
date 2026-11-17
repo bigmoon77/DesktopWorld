@@ -30,7 +30,7 @@ namespace desktopworld
         void append_startup_log(const std::string& message)
         {
             OutputDebugStringA(message.c_str());
-            OutputDebugStringA("\\n");
+            OutputDebugStringA("\n");
 
             wchar_t local_app_data[MAX_PATH]{};
             if (FAILED(SHGetFolderPathW(
@@ -56,7 +56,7 @@ namespace desktopworld
             std::ofstream file(path, std::ios::out | std::ios::app);
             if (file.is_open())
             {
-                file << message << "\\n";
+                file << message << "\n";
             }
         }
 
@@ -905,7 +905,6 @@ namespace desktopworld
         constants.max_scattering_order = validated.max_scattering_order;
         constants.angular_theta_samples = 4;
         constants.angular_phi_samples = 8;
-        constants.reserved = 0;
 
         _context->UpdateSubresource(
             _atmosphere_cb.Get(),
@@ -1645,24 +1644,54 @@ namespace desktopworld
 
     bool atmosphere_renderer::create_constant_buffers()
     {
-        D3D11_BUFFER_DESC description{};
-        description.ByteWidth = sizeof(frame_constants);
-        description.Usage = D3D11_USAGE_DEFAULT;
-        description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-
-        if (FAILED(_device->CreateBuffer(
-            &description,
-            nullptr,
-            _frame_cb.GetAddressOf())))
+        if (_device == nullptr)
         {
+            append_startup_log(
+                "AtmosphereRenderer: CreateBuffer skipped because D3D11 device is null.");
             return false;
         }
 
-        description.ByteWidth = sizeof(atmosphere_constants);
-        return SUCCEEDED(_device->CreateBuffer(
+        D3D11_BUFFER_DESC description{};
+        description.ByteWidth = static_cast<UINT>(sizeof(frame_constants));
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+        HRESULT result = _device->CreateBuffer(
             &description,
             nullptr,
-            _atmosphere_cb.GetAddressOf()));
+            _frame_cb.GetAddressOf());
+
+        if (FAILED(result))
+        {
+            std::ostringstream message;
+            message << "AtmosphereRenderer: CreateBuffer(frame_constants) failed."
+                << " HRESULT=0x" << std::hex << std::uppercase
+                << static_cast<std::uint32_t>(result)
+                << ", ByteWidth=" << std::dec << description.ByteWidth;
+            append_startup_log(message.str());
+            return false;
+        }
+
+        description.ByteWidth = static_cast<UINT>(sizeof(atmosphere_constants));
+        result = _device->CreateBuffer(
+            &description,
+            nullptr,
+            _atmosphere_cb.GetAddressOf());
+
+        if (FAILED(result))
+        {
+            std::ostringstream message;
+            message << "AtmosphereRenderer: CreateBuffer(atmosphere_constants) failed."
+                << " HRESULT=0x" << std::hex << std::uppercase
+                << static_cast<std::uint32_t>(result)
+                << ", ByteWidth=" << std::dec << description.ByteWidth;
+            append_startup_log(message.str());
+            return false;
+        }
+
+        append_startup_log(
+            "AtmosphereRenderer: constant buffers created (FrameCB=48 bytes, AtmosphereCB=112 bytes).");
+        return true;
     }
 
     bool atmosphere_renderer::create_textures()

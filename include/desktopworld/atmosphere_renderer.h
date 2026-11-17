@@ -6,6 +6,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <cstddef>
 #include <filesystem>
 
 namespace desktopworld
@@ -114,8 +115,17 @@ namespace desktopworld
             std::uint32_t max_scattering_order = 4;
             std::uint32_t angular_theta_samples = 4;
             std::uint32_t angular_phi_samples = 8;
-            std::uint32_t reserved = 0;
         };
+
+        // These layouts must match the HLSL cbuffers and D3D11's
+        // 16-byte constant-buffer ByteWidth requirement.
+        static_assert(sizeof(frame_constants) == 48);
+        static_assert(sizeof(frame_constants) % 16 == 0);
+        static_assert(offsetof(atmosphere_constants, solar_intensity) == 80);
+        static_assert(offsetof(atmosphere_constants, max_scattering_order) == 100);
+        static_assert(offsetof(atmosphere_constants, angular_phi_samples) == 108);
+        static_assert(sizeof(atmosphere_constants) == 112);
+        static_assert(sizeof(atmosphere_constants) % 16 == 0);
 
         bool create_shaders(const wchar_t* shader_path);
         bool create_constant_buffers();
