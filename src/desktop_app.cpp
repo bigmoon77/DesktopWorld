@@ -687,7 +687,8 @@ namespace desktopworld
 
             if (host_monitor_window == nullptr)
             {
-                return false;
+                return fail_initialization_win32(
+                    L"CreateWindowExW (host monitor window)");
             }
 
             taskbar_created_message =
@@ -699,7 +700,8 @@ namespace desktopworld
                 3000,
                 nullptr) == 0)
             {
-                return false;
+                return fail_initialization_win32(
+                    L"SetTimer (WorkerW health check)");
             }
 
 #ifdef DW_ENABLE_DEBUG_UI
@@ -724,7 +726,8 @@ namespace desktopworld
 
             if (debug_window == nullptr)
             {
-                return false;
+                return fail_initialization_win32(
+                    L"CreateWindowExW (debug window)");
             }
 
             ShowWindow(debug_window, show_command);
@@ -1025,17 +1028,28 @@ namespace desktopworld
 #endif
 
             wchar_t executable_path[MAX_PATH]{};
-            if (GetModuleFileNameW(nullptr, executable_path, MAX_PATH) == 0)
+            const DWORD executable_path_length =
+                GetModuleFileNameW(nullptr, executable_path, MAX_PATH);
+            if (executable_path_length == 0 ||
+                executable_path_length >= MAX_PATH)
             {
-                return false;
+                return fail_initialization_win32(
+                    L"GetModuleFileNameW (executable path)");
             }
             const std::filesystem::path shader_directory =
                 std::filesystem::path(executable_path).parent_path() / L"shaders";
 
+            if (!std::filesystem::exists(shader_directory))
+            {
+                return fail_initialization(
+                    L"shader directory not found beside executable");
+            }
+
             if (!atmosphere.initialize(
                 device.Get(), context.Get(), shader_directory.c_str()))
             {
-                return false;
+                return fail_initialization(
+                    L"atmosphere_renderer::initialize (see startup.log for shader / resource details)");
             }
 
             atmosphere.begin_profile_frame();
@@ -1046,16 +1060,21 @@ namespace desktopworld
 
             if (!atmosphere_parameters_valid)
             {
-                return false;
+                return fail_initialization(
+                    L"atmosphere_renderer::set_atmosphere_parameters");
             }
             pending_parameters = settings.atmosphere;
             atmosphere.set_render_method(settings.method);
 
             if (!render.add_pass(
-                std::make_unique<atmosphere_sky_pass>(atmosphere)) ||
-                !render.initialize())
+                std::make_unique<atmosphere_sky_pass>(atmosphere)))
             {
-                return false;
+                return fail_initialization(L"render_system::add_pass");
+            }
+            if (!render.initialize())
+            {
+                return fail_initialization(
+                    L"render_system::initialize / atmosphere_sky_pass::initialize");
             }
 
             render.resize(desktop_width, desktop_height);
@@ -2054,19 +2073,55 @@ namespace desktopworld
         implementation app{};
         app.instance = instance;
 
-        if (!app.load_settings() ||
-            !app.register_window_classes() ||
-            !app.create_windows(show_command) ||
-            !app.create_device_and_swap_chains())
+        write_startup_log(L"DesktopWorld startup attempt.");
+
+        bool initialized = app.load_settings();
+        if (!initialized)
         {
+            app.fail_initialization(L"load_settings");
+        }
+        if (initialized)
+        {
+            initialized = app.register_window_classes();
+            if (!initialized && app.initialization_error.empty())
+            {
+                app.fail_initialization_win32(L"RegisterClassExW");
+            }
+        }
+        if (initialized)
+        {
+            initialized = app.create_windows(show_command);
+            if (!initialized && app.initialization_error.empty())
+            {
+                app.fail_initialization(L"create_windows");
+            }
+        }
+        if (initialized)
+        {
+            initialized = app.create_device_and_swap_chains();
+            if (!initialized && app.initialization_error.empty())
+            {
+                app.fail_initialization(L"create_device_and_swap_chains");
+            }
+        }
+
+        if (!initialized)
+        {
+            const std::filesystem::path log_path = startup_log_path();
+            std::wostringstream message;
+            message << L"DesktopWorld failed to initialize.\n\n"
+                << app.initialization_error << L"\n\n"
+                << L"Startup log: " << log_path.wstring();
             MessageBoxW(
                 nullptr,
-                L"DesktopWorld failed to initialize. Check the debug output for details.",
+                message.str().c_str(),
                 L"DesktopWorld",
                 MB_OK | MB_ICONERROR);
             app.shutdown();
             return 1;
         }
+
+        write_startup_log(L"DesktopWorld initialization completed.");
 
         app.update_solar_state();
         app.environment_dirty = true;
