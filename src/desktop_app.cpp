@@ -568,8 +568,17 @@ namespace desktopworld
                 desktop_parent_x + mapped_width > parent_client.right ||
                 desktop_parent_y + mapped_height > parent_client.bottom)
             {
-                OutputDebugStringW(
-                    L"DesktopWorld: WorkerW client area does not contain the virtual desktop.\n");
+                std::wostringstream message;
+                message << L"WorkerW client area does not contain the virtual desktop. "
+                    << L"VirtualDesktopMapped=("
+                    << desktop_parent_x << L"," << desktop_parent_y << L","
+                    << mapped_width << L"," << mapped_height << L") "
+                    << L"WorkerWClient=("
+                    << parent_client.left << L"," << parent_client.top << L","
+                    << (parent_client.right - parent_client.left) << L","
+                    << (parent_client.bottom - parent_client.top) << L")";
+                initialization_error = message.str();
+                write_startup_log(initialization_error);
                 return false;
             }
 
@@ -584,12 +593,23 @@ namespace desktopworld
             worker_window = desktop_host.find_desktop_parent();
             if (worker_window == nullptr)
             {
-                return false;
+                return fail_initialization_win32(
+                    L"find_desktop_parent (WorkerW not found)");
             }
 
-            if (!refresh_desktop_bounds() ||
-                !update_desktop_parent_bounds())
+            if (!refresh_desktop_bounds())
             {
+                return fail_initialization(
+                    L"enumerate display monitors");
+            }
+
+            if (!update_desktop_parent_bounds())
+            {
+                if (initialization_error.empty())
+                {
+                    fail_initialization(
+                        L"map virtual desktop bounds into WorkerW");
+                }
                 return false;
             }
 
@@ -609,7 +629,8 @@ namespace desktopworld
 
             if (desktop_window == nullptr)
             {
-                return false;
+                return fail_initialization_win32(
+                    L"CreateWindowExW (desktop child window)");
             }
 
             if (!SetLayeredWindowAttributes(
@@ -618,9 +639,12 @@ namespace desktopworld
                 255,
                 LWA_ALPHA))
             {
+                const DWORD error = GetLastError();
                 DestroyWindow(desktop_window);
                 desktop_window = nullptr;
-                return false;
+                return fail_initialization_win32(
+                    L"SetLayeredWindowAttributes (desktop child window)",
+                    error);
             }
 
             return true;
@@ -630,7 +654,8 @@ namespace desktopworld
         {
             if (!refresh_desktop_bounds())
             {
-                return false;
+                return fail_initialization(
+                    L"enumerate display monitors");
             }
             GetSystemTime(&fixed_time);
 #ifdef DW_ENABLE_DEBUG_UI
@@ -755,7 +780,8 @@ namespace desktopworld
         {
             if (desktop_window == nullptr || device == nullptr || dxgi_factory == nullptr)
             {
-                return false;
+                return fail_initialization(
+                    L"create desktop SwapChain (missing HWND, device, or DXGI factory)");
             }
 
             DXGI_SWAP_CHAIN_DESC description{};
