@@ -46,14 +46,21 @@ int wmain(const int argc, wchar_t* argv[])
         return 4;
     }
 
-    const std::string_view manifest_text(
+    const std::string_view manifest_bytes(
         static_cast<const char*>(resource_data),
         resource_size);
 
-    constexpr std::string_view windows_10_id =
+    constexpr std::string_view windows_10_id_utf8 =
         "{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}";
+    constexpr std::wstring_view windows_10_id_wide =
+        L"{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}";
 
-    if (manifest_text.find(windows_10_id) == std::string_view::npos)
+    const std::string_view windows_10_id_utf16(
+        reinterpret_cast<const char*>(windows_10_id_wide.data()),
+        windows_10_id_wide.size() * sizeof(wchar_t));
+
+    if (manifest_bytes.find(windows_10_id_utf8) == std::string_view::npos &&
+        manifest_bytes.find(windows_10_id_utf16) == std::string_view::npos)
     {
         std::wcerr << L"Windows 10 supportedOS declaration is missing.\n";
         FreeLibrary(module);
