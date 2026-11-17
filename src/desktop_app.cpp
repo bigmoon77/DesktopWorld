@@ -593,11 +593,26 @@ namespace desktopworld
 
         bool create_desktop_window()
         {
-            worker_window = desktop_host.find_desktop_parent();
+            std::wstring workerw_diagnostics;
+            worker_window = desktop_host.find_desktop_parent(
+                &workerw_diagnostics);
+
+            if (!workerw_diagnostics.empty())
+            {
+                write_startup_log(
+                    L"Desktop host discovery: " + workerw_diagnostics);
+            }
+
             if (worker_window == nullptr)
             {
-                return fail_initialization(
-                    L"find_desktop_parent (WorkerW not found)");
+                std::wstring failure =
+                    L"find_desktop_parent (WorkerW not found)";
+                if (!workerw_diagnostics.empty())
+                {
+                    failure.append(L"\n");
+                    failure.append(workerw_diagnostics);
+                }
+                return fail_initialization(failure.c_str());
             }
 
             if (!refresh_desktop_bounds())
