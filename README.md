@@ -56,8 +56,15 @@ Open the debug window with **Ctrl+Shift+D**, then use the **Render** tab:
 
 HDR readback is synchronous and can briefly stall rendering. Diagnostics run only when explicitly requested. DXGI memory values cover the process on the selected adapter, not just DesktopWorld's atmosphere textures. The diagnostic UI is available in Debug builds.
 
-## Settings
+## Startup troubleshooting
 
+If initialization fails, the dialog now identifies the failing stage and (where available) the HRESULT / Win32 error code. The full startup trace is appended to:
+
+`%LOCALAPPDATA%/DesktopWorld/Logs/startup.log`
+
+Attach that log when reporting a startup failure. It records WorkerW bounds, window / SwapChain creation, D3D11 setup, shader compilation, and atmosphere resource initialization failures.
+
+## Settings
 On first launch the application creates `%APPDATA%/DesktopWorld/settings.ini`. It stores observer latitude/longitude, render method, frame mode and FPS, sample interval override, exposure, and physical atmosphere parameters. The file can be edited directly in Release builds.
 
 Static LUT cache files are placed under `%LOCALAPPDATA%/DesktopWorld/Cache`. Cache headers validate the algorithm version, format, dimensions, and physical parameter hash before reuse.
