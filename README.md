@@ -18,7 +18,7 @@ Windows desktop background renderer using Win32 and Direct3D 11.
 - A serial RenderSystem / RenderPass contract with AtmosphereSkyPass as the initial pass.
 - Adaptive, fixed-FPS, and on-demand frame modes.
 - Render Once, Update Environment, and Update Environment + Render Once debug actions.
-- Debug-only Dear ImGui window in Debug builds; Ctrl+Shift+D toggles it.
+- Debug-only Dear ImGui window in Debug builds; Ctrl+Shift+D toggles it. The debug UI is Japanese and loads an installed Windows Japanese font (Yu Gothic / Meiryo / MS Gothic / BIZ UDGothic) without redistributing font files.
 - Fixed UTC time, latitude/longitude, render method, sample interval, FPS, Rayleigh/Mie/ozone/ground settings, scattering order, and exposure controls.
 - Asynchronous D3D11 timestamp profiling for static precompute stages, Sky View generation, blending, and rendering.
 - Debug-only linear-HDR comparison: B vs D at 256 x 128 and A vs D on an aspect-preserving analysis grid capped at 1920 x 1080, reporting RGB MAE / RMSE / maximum absolute error.

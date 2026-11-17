@@ -1,8 +1,8 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 2.0
-- 対応要件: docs/requirements.md v1.6
-- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / raised desktop ホスト構成、layered child 用アプリケーションマニフェスト、D3D11 constant buffer packing、HDR品質計測、Bruneton CPU比較仕様の反映版
+- 文書バージョン: 2.1
+- 対応要件: docs/requirements.md v1.7
+- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / raised desktop ホスト構成、layered child 用アプリケーションマニフェスト、D3D11 constant buffer packing、日本語 Debug UI、HDR品質計測、Bruneton CPU比較仕様の反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -449,6 +449,16 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 
 この比較は DesktopWorld の 3 波長係数を合わせた参照計算であり、現行 scalar solar intensity の近似を含む。実太陽の連続スペクトル、偏光、地表の空間変動などをモデル化した完全な分光検証とは扱わない。比較ツールのビルド成功と実測値の収集も別々に評価する。
 
+### 9.5 Debug UI の日本語表示
+
+- Dear ImGui は Debug ビルドに限定する。
+- UI の文字列リテラルは UTF-8 とし、MSVC の /utf-8 オプションでコンパイルする。
+- Windows ディレクトリの Fonts フォルダーから Yu Gothic、Meiryo、MS Gothic、BIZ UDGothic の順に利用可能な日本語フォントを探す。
+- フォントデータはファイルから読み込み、ImGui Font Atlas に渡す。Font Atlas が破棄されるまで元データを保持する。
+- GetGlyphRangesJapanese() を指定し、日本語のひらがな・カタカナ・基本漢字を含める。
+- システムフォントを再配布しない。日本語フォントが見つからない場合は ImGui の既定フォントを維持し、startup.log に警告を記録する。
+- Debug UI のウィンドウ幅・高さは日本語ラベルと説明文を考慮して設定する。
+
 ## 10. エラー処理
 
 | 失敗 | 動作 |
@@ -477,6 +487,7 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 - Render Method A/B/C/D の出力。
 - Static LUT cache load / invalidation。
 - FrameCB / AtmosphereCB の C++ size / offset が HLSL cbuffer packing と一致し、ByteWidth が16バイト境界にあること。
+- Debug UI で日本語フォントを読み込み、全タブの日本語ラベル・説明・計測結果を表示できること。
 - Timestamp query の非同期回収。
 - B vs D の MAE / RMSE / Maximum Absolute Error。
 - A vs D の Linear HDR 比較。解析解像度はアスペクト比を維持した最大 1920 x 1080。

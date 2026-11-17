@@ -1,7 +1,7 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象ブランチ: `feature/initial-implementation`
-- 基準文書: `docs/requirements.md` v1.6 / `docs/detailed_design.md` v2.0
+- 基準文書: `docs/requirements.md` v1.7 / `docs/detailed_design.md` v2.1
 - レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、HDR品質計測、Bruneton CPU比較CLIの仕様とコードの照合
 - 結果: **単一仮想デスクトップ描画方式の矛盾を解消。旧 WorkerW と raised desktop のホスト構成、layered child 用の Windows 10 対応マニフェスト、D3D11 定数バッファの HLSL packing 整合を実装。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
 - 未完了: 実際のGPU captureを用いたBruneton比較値の収集、実機での複数モニター / Explorer 復旧検証。
@@ -83,6 +83,7 @@
 - D3D11 device / immediate context は単一構成である。
 - 実行ファイルの埋め込みマニフェストに Windows 10 supportedOS 宣言を含め、layered child window の互換性要件を満たす。
 - FrameCB / AtmosphereCB の ByteWidth と HLSL cbuffer layout を compile-time assertion で検証する。
+- Debug UI は Windows のインストール済み日本語フォントを実行時に読み込み、日本語ラベルを表示する。
 
 ### 4.2 HDR品質計測の実装確認
 
@@ -133,6 +134,7 @@
 | O-05 | 実機ホスト検証 | 旧 WorkerW / raised desktop のホスト検出、0x052C(0x0D, 1)、layered child 用マニフェストを実装。実機表示検証は未完了 | Windows 10 / Windows 11 24H2+、raised desktop の描画子ウィンドウ生成、Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
 | O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として定義済み。時間追従が必要な場合は Adaptive / Fixed を使う |
 | O-07 | AtmosphereCB 作成 | C++ 側に HLSL にない reserved uint があり、116 bytes の不正な ByteWidth になっていた | C++ / HLSL layout を一致させ112 bytesとし、CreateBuffer failure に HRESULT を記録 | 修正済み・実機再確認待ち |
+| O-08 | Debug UI 日本語表示 | 英語ラベルと日本語フォント未設定 | 全タブ・説明・計測結果を日本語化し、Windows のインストール済み日本語フォントを利用 | 実装済み・実機表示確認待ち |
 
 ### 5.1 OnDemandの時刻更新
 
