@@ -202,9 +202,9 @@ namespace desktopworld
         std::wstring initialization_error{};
         HWND desktop_window = nullptr;
         HWND debug_window = nullptr;
-        HWND worker_window = nullptr;
         HWND host_monitor_window = nullptr;
         workerw_host desktop_host{};
+        desktop_host_layout desktop_layout{};
         monitor_manager displays{};
         RECT desktop_virtual_bounds{};
         int desktop_parent_x = 0;
@@ -384,14 +384,22 @@ namespace desktopworld
                     message == WM_TIMER &&
                     wparam == host_check_timer_id)
                 {
-                    const HWND current_worker =
-                        app->desktop_host.find_desktop_parent();
+                    desktop_host_layout current_layout{};
+                    const bool host_found =
+                        app->desktop_host.find_desktop_parent(current_layout);
 
                     if (app->desktop_window == nullptr ||
                         !IsWindow(app->desktop_window) ||
-                        !IsWindow(app->worker_window) ||
-                        (current_worker != nullptr &&
-                         current_worker != app->worker_window))
+                        !IsWindow(app->desktop_layout.parent_window) ||
+                        !host_found ||
+                        current_layout.parent_window !=
+                            app->desktop_layout.parent_window ||
+                        current_layout.shell_view_window !=
+                            app->desktop_layout.shell_view_window ||
+                        current_layout.wallpaper_window !=
+                            app->desktop_layout.wallpaper_window ||
+                        current_layout.uses_progman_layered_layout !=
+                            app->desktop_layout.uses_progman_layered_layout)
                     {
                         app->host_rebuild_requested = true;
                     }
@@ -425,7 +433,7 @@ namespace desktopworld
                     {
                         app->desktop_render_target.Reset();
                         app->desktop_swap_chain.Reset();
-                        app->worker_window = nullptr;
+                        app->desktop_layout = {};
                         app->host_rebuild_requested = true;
                     }
                     return 0;
@@ -522,8 +530,8 @@ namespace desktopworld
 
         bool update_desktop_parent_bounds()
         {
-            if (worker_window == nullptr ||
-                !IsWindow(worker_window) ||
+            if (desktop_layout.parent_window == nullptr ||
+                !IsWindow(desktop_layout.parent_window) ||
                 !displays.is_valid())
             {
                 return false;
@@ -539,7 +547,7 @@ namespace desktopworld
             SetLastError(ERROR_SUCCESS);
             MapWindowPoints(
                 HWND_DESKTOP,
-                worker_window,
+                desktop_layout.parent_window,
                 corners,
                 ARRAYSIZE(corners));
 
@@ -547,7 +555,7 @@ namespace desktopworld
             if (mapping_error != ERROR_SUCCESS)
             {
                 return fail_initialization_win32(
-                    L"MapWindowPoints (virtual desktop to WorkerW)",
+                    L"MapWindowPoints (virtual desktop to desktop host)",
                     mapping_error);
             }
 
@@ -555,10 +563,10 @@ namespace desktopworld
             desktop_parent_y = corners[0].y;
 
             RECT parent_client{};
-            if (!GetClientRect(worker_window, &parent_client))
+            if (!GetClientRect(desktop_layout.parent_window, &parent_client))
             {
                 return fail_initialization_win32(
-                    L"GetClientRect (WorkerW)");
+                    L"GetClientRect (desktop host)");
             }
 
             const int mapped_width = corners[1].x - corners[0].x;
@@ -572,11 +580,11 @@ namespace desktopworld
                 desktop_parent_y + mapped_height > parent_client.bottom)
             {
                 std::wostringstream message;
-                message << L"WorkerW client area does not contain the virtual desktop. "
+                message << L"Desktop host client area does not contain the virtual desktop. "
                     << L"VirtualDesktopMapped=("
                     << desktop_parent_x << L"," << desktop_parent_y << L","
                     << mapped_width << L"," << mapped_height << L") "
-                    << L"WorkerWClient=("
+                    << L"DesktopHostClient=("
                     << parent_client.left << L"," << parent_client.top << L","
                     << (parent_client.right - parent_client.left) << L","
                     << (parent_client.bottom - parent_client.top) << L")";
@@ -593,26 +601,32 @@ namespace desktopworld
 
         bool create_desktop_window()
         {
-            std::wstring workerw_diagnostics;
-            worker_window = desktop_host.find_desktop_parent(
-                &workerw_diagnostics);
-
-            if (!workerw_diagnostics.empty())
+            desktop_layout = {};
+            std::wstring host_diagnostics;
+            if (!desktop_host.find_desktop_parent(
+                desktop_layout,
+                &host_diagnostics))
             {
-                write_startup_log(
-                    L"Desktop host discovery: " + workerw_diagnostics);
-            }
+                if (!host_diagnostics.empty())
+                {
+                    write_startup_log(
+                        L"Desktop host discovery: " + host_diagnostics);
+                }
 
-            if (worker_window == nullptr)
-            {
                 std::wstring failure =
-                    L"find_desktop_parent (WorkerW not found)";
-                if (!workerw_diagnostics.empty())
+                    L"find_desktop_parent (desktop host not found)";
+                if (!host_diagnostics.empty())
                 {
                     failure.append(L"\n");
-                    failure.append(workerw_diagnostics);
+                    failure.append(host_diagnostics);
                 }
                 return fail_initialization(failure.c_str());
+            }
+
+            if (!host_diagnostics.empty())
+            {
+                write_startup_log(
+                    L"Desktop host discovery: " + host_diagnostics);
             }
 
             if (!refresh_desktop_bounds())
@@ -626,7 +640,7 @@ namespace desktopworld
                 if (initialization_error.empty())
                 {
                     fail_initialization(
-                        L"map virtual desktop bounds into WorkerW");
+                        L"map virtual desktop bounds into desktop host");
                 }
                 return false;
             }
@@ -640,13 +654,14 @@ namespace desktopworld
                 desktop_parent_y,
                 static_cast<int>(desktop_width),
                 static_cast<int>(desktop_height),
-                worker_window,
+                desktop_layout.parent_window,
                 nullptr,
                 instance,
                 this);
 
             if (desktop_window == nullptr)
             {
+                desktop_layout = {};
                 return fail_initialization_win32(
                     L"CreateWindowExW (desktop child window)");
             }
@@ -660,9 +675,51 @@ namespace desktopworld
                 const DWORD error = GetLastError();
                 DestroyWindow(desktop_window);
                 desktop_window = nullptr;
+                desktop_layout = {};
                 return fail_initialization_win32(
                     L"SetLayeredWindowAttributes (desktop child window)",
                     error);
+            }
+
+            if (desktop_layout.uses_progman_layered_layout)
+            {
+                // Windows 11 24H2+: place our layered child between the
+                // desktop icon view and the system wallpaper WorkerW.
+                if (!SetWindowPos(
+                    desktop_window,
+                    desktop_layout.shell_view_window,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+                {
+                    const DWORD error = GetLastError();
+                    DestroyWindow(desktop_window);
+                    desktop_window = nullptr;
+                    desktop_layout = {};
+                    return fail_initialization_win32(
+                        L"SetWindowPos (place desktop below SHELLDLL_DefView)",
+                        error);
+                }
+
+                if (!SetWindowPos(
+                    desktop_layout.wallpaper_window,
+                    desktop_window,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+                {
+                    const DWORD error = GetLastError();
+                    DestroyWindow(desktop_window);
+                    desktop_window = nullptr;
+                    desktop_layout = {};
+                    return fail_initialization_win32(
+                        L"SetWindowPos (place wallpaper WorkerW below desktop)",
+                        error);
+                }
             }
 
             return true;
@@ -777,7 +834,7 @@ namespace desktopworld
                 return false;
             }
 
-            if (desktop_window != nullptr && worker_window != nullptr)
+            if (desktop_window != nullptr && desktop_layout.parent_window != nullptr)
             {
                 if (!update_desktop_parent_bounds())
                 {
@@ -865,7 +922,7 @@ namespace desktopworld
                 desktop_window = nullptr;
             }
 
-            worker_window = nullptr;
+            desktop_layout = {};
             const bool window_created = create_desktop_window();
             const bool swap_chain_created =
                 window_created && create_desktop_swap_chain();
@@ -880,7 +937,7 @@ namespace desktopworld
                     DestroyWindow(desktop_window);
                 }
                 desktop_window = nullptr;
-                worker_window = nullptr;
+                desktop_layout = {};
 
                 OutputDebugStringW(
                     L"DesktopWorld: WorkerW host restore failed; will retry.\n");
