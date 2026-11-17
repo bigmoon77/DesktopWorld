@@ -1,9 +1,9 @@
 # DesktopWorld 設計整合レビュー
 
 - 対象ブランチ: `feature/initial-implementation`
-- 基準文書: `docs/requirements.md` v1.4 / `docs/detailed_design.md` v1.8
+- 基準文書: `docs/requirements.md` v1.5 / `docs/detailed_design.md` v1.9
 - レビュー範囲: 要件定義・詳細設計・現行実装の構成整合性、HDR品質計測、Bruneton CPU比較CLIの仕様とコードの照合
-- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。旧 WorkerW と raised desktop のホスト構成を実装し、raised desktop の WorkerW 生成要求を追加。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
+- 結果: **単一仮想デスクトップ描画方式の矛盾を解消。旧 WorkerW と raised desktop のホスト構成、layered child 用の Windows 10 対応マニフェスト、埋め込み検査を実装。B vs D / A vs D のHDR誤差計測、PFM＋メタデータ、DXGIプロセスGPUメモリ監視、Bruneton CPU比較CLIを実装。**
 - 未完了: 実際のGPU captureを用いたBruneton比較値の収集、実機での複数モニター / Explorer 復旧検証。
 - 注意: CI のビルド・テスト成功は、実機表示・物理精度・全品質要件の充足を保証しない。
 
@@ -27,7 +27,7 @@
 | ID | 項目 | 修正前の問題 | 統一した仕様 | 状態 |
 |---|---|---|---|---|
 | R-01 | SwapChain構成 | 詳細設計 2.1 はモニターごと、FR-01 / 詳細設計 7.2 は仮想デスクトップ全体に1つ | 単一の仮想デスクトップ子ウィンドウ / SwapChain / RenderTarget | 修正済み |
-| R-02 | 起動時デスクトップホスト取得 | raised desktop で WorkerW の生成要求が旧方式の引数のみだった | Progman の WS_EX_NOREDIRECTIONBITMAP を検出し、0x052C(0x0D, 0) と 0x052C(0x0D, 1) を順に要求して WorkerW を再探索 | 実装済み・実機検証待ち |
+| R-02 | 起動時デスクトップホスト取得 | raised desktop で WorkerW の生成要求が旧方式の引数のみだった | Progman の WS_EX_NOREDIRECTIONBITMAP を検出し、0x052C(0x0D, 1) を要求して WorkerW を再探索 | 実装済み・実機検証待ち |
 | R-03 | RenderContext | 「現在のモニター向けRenderTarget」と単一描画面の説明が不一致 | 仮想デスクトップ全体の単一 RenderTarget / viewport | 修正済み |
 | R-04 | モニター変更時の復旧 | 「対象ホストを破棄し残りのモニターを継続」は単一SwapChain方式と不整合 | 全体を再列挙・再構築し、成功まで描画面全体を停止 | 修正済み |
 | R-05 | 終了処理 | 複数SwapChainを前提とする表現 | 単一SwapChain / RenderTarget / 描画ウィンドウの解放 | 修正済み |
@@ -81,6 +81,7 @@
 - ホスト再構築では旧描画面を破棄し、新しい描画面の生成に成功した場合だけ描画を再開する。
 - 旧 WorkerW / layered Progman の取得・再構築に失敗した場合は描画面を無効化し、定期検査で再試行する。
 - D3D11 device / immediate context は単一構成である。
+- 実行ファイルの埋め込みマニフェストに Windows 10 supportedOS 宣言を含め、layered child window の互換性要件を満たす。
 
 ### 4.2 HDR品質計測の実装確認
 
@@ -128,7 +129,7 @@
 | O-02 | B vs D補間誤差 | Debug UI からワンショットで Linear HDR の MAE / RMSE / 最大誤差を計測できる | 薄明・緯度・日付の異なる条件で実測結果を収集 |
 | O-03 | A vs D描画経路・空間近似誤差 | 同一 Linear HDR 条件、最大 1920 x 1080 の解析グリッドで計測できる | 複数の出力解像度・太陽高度で実測結果を収集 |
 | O-04 | GPUメモリ | DXGI 1.4 によるプロセス単位 Local / Non-local 使用量・Budget を Debug UI に表示 | 複数GPU / iGPU / dGPU環境で取得可否と挙動を確認 |
-| O-05 | 実機ホスト検証 | 旧 WorkerW / raised desktop のホスト検出とパラメータ付き WorkerW 生成要求を実装。実機表示検証は未完了 | Windows 10 / Windows 11 24H2+、raised desktop の WorkerW 生成、Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
+| O-05 | 実機ホスト検証 | 旧 WorkerW / raised desktop のホスト検出、0x052C(0x0D, 1)、layered child 用マニフェストを実装。実機表示検証は未完了 | Windows 10 / Windows 11 24H2+、raised desktop の描画子ウィンドウ生成、Explorer再起動、混在DPI、負座標、モニター抜き差しを検証 |
 | O-06 | OnDemandの時刻更新 | 明示要求時だけ描画し、待機中は時刻を自動追従しない | FR-06 の strict on-demand として定義済み。時間追従が必要な場合は Adaptive / Fixed を使う |
 
 ### 5.1 OnDemandの時刻更新

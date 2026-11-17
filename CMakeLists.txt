@@ -87,6 +87,14 @@ target_link_libraries(desktopworld PRIVATE
     imm32
 )
 
+# Layered child windows require the process to declare Windows 8+ support.
+set(DESKTOPWORLD_APP_MANIFEST
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/desktopworld.manifest")
+target_link_options(desktopworld PRIVATE
+    "/MANIFEST:EMBED"
+    "/MANIFESTINPUT:${DESKTOPWORLD_APP_MANIFEST}"
+)
+
 add_custom_command(TARGET desktopworld POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders
@@ -123,6 +131,28 @@ target_compile_options(desktopworld_core_tests PRIVATE
 target_link_libraries(desktopworld_core_tests PRIVATE shell32)
 add_test(NAME desktopworld_core_tests COMMAND desktopworld_core_tests)
 set_tests_properties(desktopworld_core_tests PROPERTIES TIMEOUT 45)
+
+add_executable(desktopworld_manifest_validation
+    tools/manifest_validation.cpp
+)
+target_compile_definitions(desktopworld_manifest_validation PRIVATE
+    UNICODE
+    _UNICODE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+target_compile_options(desktopworld_manifest_validation PRIVATE
+    /W4
+    /permissive-
+    /EHsc
+    /utf-8
+    /Zc:__cplusplus
+)
+add_dependencies(desktopworld_manifest_validation desktopworld)
+add_test(
+    NAME desktopworld_manifest_validation
+    COMMAND desktopworld_manifest_validation "$<TARGET_FILE:desktopworld>"
+)
 
 add_executable(shader_validation tools/shader_validation.cpp)
 target_compile_features(shader_validation PRIVATE cxx_std_20)

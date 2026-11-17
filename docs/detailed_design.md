@@ -1,8 +1,8 @@
 # DesktopWorld 詳細設計
 
-- 文書バージョン: 1.8
-- 対応要件: docs/requirements.md v1.4
-- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / raised desktop ホスト構成、HDR品質計測、Bruneton CPU比較仕様の反映版
+- 文書バージョン: 1.9
+- 対応要件: docs/requirements.md v1.5
+- 状態: 単一仮想デスクトップ描画方式、旧 WorkerW / raised desktop ホスト構成、layered child 用アプリケーションマニフェスト、HDR品質計測、Bruneton CPU比較仕様の反映版
 - 対象 API: Win32 / Direct3D 11
 
 ## 1. 全体構成
@@ -61,7 +61,7 @@ DesktopWorld
 4. workerw_host が Explorer のデスクトップホスト構成を判別する。旧構成ではアイコンを含む SHELLDLL_DefView の後ろにあるトップレベル WorkerW を描画親として取得する。layered Progman 構成（Windows 11 24H2+）では Progman を描画親として取得し、独自の layered child window を SHELLDLL_DefView と壁紙 WorkerW の間へ配置する。
 5. monitor_manager が算出した仮想デスクトップ矩形を選択した描画親のクライアント座標へ変換し、矩形全体が包含されることを確認する。安全なホストと全体を包含する描画領域を確保できない場合は起動失敗とする。旧構成・layered Progman 構成以外への無条件フォールバックや一部モニターだけへの縮退は禁止する。
 6. D3D11 device / immediate context を 1 組生成する。
-7. 選択した描画親の子として仮想デスクトップ矩形全体を覆う単一の描画ウィンドウ、SwapChain、RenderTarget を生成する。layered Progman 構成では、描画ウィンドウを SHELLDLL_DefView の直下、壁紙 WorkerW の直上へ Z オーダー設定する。SwapChain の寸法は仮想デスクトップ矩形の幅・高さと一致させ、負のデスクトップ座標は親ウィンドウ座標へ変換して配置する。
+7. 選択した描画親の子として仮想デスクトップ矩形全体を覆う単一の描画ウィンドウ、SwapChain、RenderTarget を生成する。layered Progman 構成では、Windows 10 以降への対応を宣言したアプリケーションマニフェストを埋め込み、WS_EX_LAYERED の子ウィンドウを生成する。描画ウィンドウを SHELLDLL_DefView の直下へ配置し、壁紙 WorkerW は同じ親の HWND_BOTTOM へ移動する。SwapChain の寸法は仮想デスクトップ矩形の幅・高さと一致させ、負のデスクトップ座標は親ウィンドウ座標へ変換して配置する。
 8. atmosphere_lut_cache がパラメータ hash に対応する Static LUT をロードする。存在しなければ生成する。
 9. solar_model が現在 UTC と観測地点から太陽方向を計算する。
 10. sky_sample_cache が必要な Sample Pair を生成する。
@@ -259,7 +259,8 @@ Pass は WorkerW の HWND や settings_store を直接参照しない。
 - 旧構成では、SHELLDLL_DefView を持つトップレベルウィンドウの後ろにあるトップレベル WorkerW を描画親とする。
 - layered Progman 構成（Windows 11 24H2+）では、Progman を描画親とし、その子である SHELLDLL_DefView と壁紙 WorkerW を検出する。DesktopWorld の layered child window は両者の間に Z オーダー設定する。壁紙 WorkerW 自体を DesktopWorld の親にはしない。
 - Progman の WS_EX_NOREDIRECTIONBITMAP を確認して raised desktop を識別する。
-- raised desktop で壁紙 WorkerW が未生成の場合は、Progman へ 0x052C(wParam=0x0D, lParam=0)、続けて 0x052C(wParam=0x0D, lParam=1) を SMTO_ABORTIFHUNG 付きで送り、各メッセージ後に Progman 直下の WorkerW を再探索する。従来構成では 0x052C(0, 0) の生成要求を使用する。
+- raised desktop で壁紙 WorkerW が未生成の場合は、Progman へ 0x052C(wParam=0x0D, lParam=1) を SMTO_ABORTIFHUNG 付きで送り、Progman 直下の WorkerW を再探索する。0x052C(wParam=0x0D, lParam=0) は生成済み WorkerW の解放要求として扱い、起動時には送らない。
+- layered child window を使う実行ファイルには Windows 10 以降への対応を宣言したアプリケーションマニフェストを埋め込む。CMake の `/MANIFESTINPUT` を使って既定マニフェストへ compatibility 情報を統合する。
 - SendMessageTimeoutW の戻り値と Win32 エラー、Progman の拡張スタイルを startup.log に記録する。
 - どちらの既知構成も取得できなければエラーを返す。親子関係や Z オーダーが不明なウィンドウへの無条件フォールバックは禁止する。
 - 選択した描画親の client area に仮想デスクトップ矩形全体が包含されることを確認する。
@@ -472,6 +473,7 @@ cmake --build out/reference --config Release --target bruneton_reference_compare
 
 ### 11.3 Integration Test
 
+- 実行ファイルの埋め込みマニフェストに Windows 10 supportedOS 宣言が含まれることを自動検査する。
 - 旧 WorkerW、layered Progman、および raised desktop の WorkerW 生成要求を含むホスト取得失敗時の安全な終了。
 - Explorer 再起動後の再接続。
 - モニター追加・削除・配置変更・解像度変更・DPI 変更時に、単一描画面が仮想デスクトップ全体へ再構築されること。再構築失敗時に部分表示へ縮退しないこと。

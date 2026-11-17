@@ -311,9 +311,16 @@ namespace desktopworld
             const wchar_t* stage,
             const DWORD error = GetLastError())
         {
-            const HRESULT result = HRESULT_FROM_WIN32(
-                error == ERROR_SUCCESS ? ERROR_GEN_FAILURE : error);
-            return fail_initialization(stage, result);
+            const DWORD normalized_error =
+                error == ERROR_SUCCESS ? ERROR_GEN_FAILURE : error;
+            const HRESULT result = HRESULT_FROM_WIN32(normalized_error);
+
+            std::wostringstream detailed_stage;
+            detailed_stage << stage
+                << L" (Win32 error="
+                << normalized_error
+                << L")";
+            return fail_initialization(detailed_stage.str().c_str(), result);
         }
         static LRESULT CALLBACK window_proc(
             HWND window,
@@ -645,11 +652,33 @@ namespace desktopworld
                 return false;
             }
 
+            constexpr DWORD desktop_ex_style =
+                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
+            constexpr DWORD desktop_window_style =
+                WS_CHILD | WS_VISIBLE;
+
+            std::wostringstream creation_diagnostics;
+            creation_diagnostics
+                << L"Create desktop child window: parent=0x"
+                << std::hex << std::uppercase
+                << reinterpret_cast<UINT_PTR>(
+                    desktop_layout.parent_window)
+                << L", exStyle=0x"
+                << static_cast<unsigned long>(desktop_ex_style)
+                << L", style=0x"
+                << static_cast<unsigned long>(desktop_window_style)
+                << L", x=" << std::dec << desktop_parent_x
+                << L", y=" << desktop_parent_y
+                << L", width=" << desktop_width
+                << L", height=" << desktop_height;
+            write_startup_log(creation_diagnostics.str());
+
+            SetLastError(ERROR_SUCCESS);
             desktop_window = CreateWindowExW(
-                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+                desktop_ex_style,
                 desktop_class_name,
                 L"DesktopWorld Surface",
-                WS_CHILD | WS_VISIBLE,
+                desktop_window_style,
                 desktop_parent_x,
                 desktop_parent_y,
                 static_cast<int>(desktop_width),
@@ -661,9 +690,19 @@ namespace desktopworld
 
             if (desktop_window == nullptr)
             {
+                const DWORD error = GetLastError();
+                std::wostringstream failure_diagnostics;
+                failure_diagnostics
+                    << L"CreateWindowExW returned NULL; Win32 error="
+                    << error
+                    << L", parent valid="
+                    << (IsWindow(desktop_layout.parent_window) ? L"true" : L"false");
+                write_startup_log(failure_diagnostics.str());
+
                 desktop_layout = {};
                 return fail_initialization_win32(
-                    L"CreateWindowExW (desktop child window)");
+                    L"CreateWindowExW (desktop child window)",
+                    error);
             }
 
             if (!SetLayeredWindowAttributes(
@@ -705,7 +744,7 @@ namespace desktopworld
 
                 if (!SetWindowPos(
                     desktop_layout.wallpaper_window,
-                    desktop_window,
+                    HWND_BOTTOM,
                     0,
                     0,
                     0,

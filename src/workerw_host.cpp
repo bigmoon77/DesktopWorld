@@ -284,24 +284,8 @@ namespace desktopworld
 
         if (raised_desktop)
         {
-            // On the raised desktop, Progman owns a layered ShellView and
-            // creates the wallpaper WorkerW only after these parameterized
-            // shell messages. The legacy (0, 0) message alone can complete
-            // without creating that child.
-            send_progman_message(
-                program_manager,
-                static_cast<WPARAM>(0x0D),
-                static_cast<LPARAM>(0),
-                diagnostics);
-
-            if (find_progman_layered_layout(
-                program_manager,
-                layout,
-                diagnostics))
-            {
-                return true;
-            }
-
+            // Keep one raised-desktop WorkerW reference. The (0x0D, 0)
+            // form is used by Explorer to release the wallpaper WorkerW.
             send_progman_message(
                 program_manager,
                 static_cast<WPARAM>(0x0D),
