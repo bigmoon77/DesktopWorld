@@ -797,22 +797,32 @@ namespace desktopworld
             description.Windowed = TRUE;
             description.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-            if (FAILED(dxgi_factory->CreateSwapChain(
+            HRESULT result = dxgi_factory->CreateSwapChain(
                 device.Get(),
                 &description,
-                desktop_swap_chain.GetAddressOf())))
+                desktop_swap_chain.GetAddressOf());
+            if (FAILED(result))
             {
-                return false;
+                return fail_initialization(
+                    L"IDXGIFactory::CreateSwapChain (desktop surface)",
+                    result);
             }
 
             dxgi_factory->MakeWindowAssociation(
                 desktop_window,
                 DXGI_MWA_NO_ALT_ENTER);
 
-            return SUCCEEDED(create_render_target_view(
+            result = create_render_target_view(
                 device.Get(),
                 desktop_swap_chain.Get(),
-                desktop_render_target.GetAddressOf()));
+                desktop_render_target.GetAddressOf());
+            if (FAILED(result))
+            {
+                return fail_initialization(
+                    L"create desktop SwapChain back-buffer RenderTargetView",
+                    result);
+            }
+            return true;
         }
 
         void rebuild_desktop_host()
@@ -924,19 +934,31 @@ namespace desktopworld
             }
             if (FAILED(result))
             {
-                return false;
+                return fail_initialization(
+                    L"D3D11CreateDevice (hardware feature level 11_0)",
+                    result);
             }
 
             Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
             Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
 
             result = device.As(&dxgi_device);
-            if (FAILED(result) ||
-                FAILED(dxgi_device->GetAdapter(adapter.GetAddressOf())) ||
-                FAILED(adapter->GetParent(
-                    IID_PPV_ARGS(dxgi_factory.GetAddressOf()))))
+            if (FAILED(result))
             {
-                return false;
+                return fail_initialization(L"QueryInterface IDXGIDevice", result);
+            }
+            result = dxgi_device->GetAdapter(adapter.GetAddressOf());
+            if (FAILED(result))
+            {
+                return fail_initialization(L"IDXGIDevice::GetAdapter", result);
+            }
+            result = adapter->GetParent(
+                IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
+            if (FAILED(result))
+            {
+                return fail_initialization(
+                    L"IDXGIAdapter::GetParent (IDXGIFactory)",
+                    result);
             }
 
 #ifdef DW_ENABLE_DEBUG_UI
@@ -971,23 +993,34 @@ namespace desktopworld
                 &description,
                 debug_swap_chain.GetAddressOf());
 
-            if (FAILED(result) ||
-                FAILED(create_render_target_view(
-                    device.Get(),
-                    debug_swap_chain.Get(),
-                    debug_render_target.GetAddressOf())))
+            if (FAILED(result))
             {
-                return false;
+                return fail_initialization(
+                    L"IDXGIFactory::CreateSwapChain (debug window)",
+                    result);
+            }
+            result = create_render_target_view(
+                device.Get(),
+                debug_swap_chain.Get(),
+                debug_render_target.GetAddressOf());
+            if (FAILED(result))
+            {
+                return fail_initialization(
+                    L"create debug SwapChain RenderTargetView",
+                    result);
             }
 
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
             ImGui::StyleColorsDark();
 
-            if (!ImGui_ImplWin32_Init(debug_window) ||
-                !ImGui_ImplDX11_Init(device.Get(), context.Get()))
+            if (!ImGui_ImplWin32_Init(debug_window))
             {
-                return false;
+                return fail_initialization(L"ImGui_ImplWin32_Init");
+            }
+            if (!ImGui_ImplDX11_Init(device.Get(), context.Get()))
+            {
+                return fail_initialization(L"ImGui_ImplDX11_Init");
             }
 #endif
 
